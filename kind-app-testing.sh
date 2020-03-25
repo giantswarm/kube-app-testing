@@ -1,4 +1,11 @@
-#!/bin/bash
+#!/bin/bash -e
+
+if [[ $# < 1 ]]; then
+  echo "Usage:"
+  echo ""
+  echo "  $0 [chart_dir_name]"
+  exit 1
+fi
 
 KUBECONFIG_DIR=/tmp/kind_test
 export KUBECONFIG=${KUBECONFIG_DIR}/kubei.config
@@ -7,6 +14,8 @@ KUBECONFIG_INTERNAL=${KUBECONFIG_INTERNAL_DIR}/kubei.config
 CLUSTER_NAME=kt
 KIND_CONFIG=kind.yaml
 CR_NAMESPACE=giantswarm
+
+chart_name=$1
 
 create_cluster () {
   if [[ ! -d ${KUBECONFIG_DIR} ]]; then
@@ -28,15 +37,18 @@ start () {
   # create giantswarm namespace
   kubectl create ns $CR_NAMESPACE
   # start app+chart-operators
-#kubectl run app-operator --generator=run-pod/v1 --image=quay.io/giantswarm/app-operator -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --service.kubernetes.incluster="false"
-#kubectl run chart-operator --generator=run-pod/v1 --image=quay.io/giantswarm/chart-operator -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="false"
+kubectl run app-operator --generator=run-pod/v1 --image=quay.io/giantswarm/app-operator -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --service.kubernetes.incluster="false"
+kubectl run chart-operator --generator=run-pod/v1 --image=quay.io/giantswarm/chart-operator -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="false"
 }
 
 build_chart () {
-docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:latest helm template --validate --dir helm/$1
+  docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:latest helm template --validate --dir helm/$1
+  chart_log=$(helm package helm/$1)
+  echo $chart_log
+  chart_name=$(echo $chart_log | awk -F "/" '{print $NF}')
+  echo curl --data-binary "@${chart_name}" http://localhost:8080/api/charts
 }
 
-chart_name=$1
 #delete_cluster
 #create_cluster
 #start
