@@ -17,7 +17,7 @@
 # - add version information 
 
 
-if [[ $# < 1 ]]; then
+if [[ $# -lt 1 ]]; then
   echo "Usage:"
   echo ""
   echo "  $0 [chart_dir_name] - the name of the chart and also the dir in 'helm/' dir"
@@ -30,6 +30,7 @@ export KUBECONFIG=${CONFIG_DIR}/kubei.config
 CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
 CHART_DEPLOY_NAMESPACE=default
+MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC=60
 
 ARCHITECT_VERSION_TAG=latest
 CHART_MUSEUM_VERSION_TAG=latest
@@ -106,9 +107,7 @@ create_kind_config () {
   cat > $1 << EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-# switch to calico later
 #networking:
-  # the default CNI will not be installed
   #disableDefaultCNI: true
 nodes:
 - role: control-plane
@@ -141,6 +140,18 @@ EOF
 create_app_cr () {
   name=$1
   version=$2
+  config_file=$3
+
+  config=""
+
+  if [[ $config_file != "" ]]; then
+    cm_name=${name}-testing-user-config
+    kubectl create configmap ${cm_name} --from-file=${config_file}
+    config="userConfig:
+    configMap:
+      name: \"${cm_name}\"
+      namespace: \"${TOOLS_NAMESPACE}\""
+  fi
 
   kubectl create -f - << EOF
 apiVersion: application.giantswarm.io/v1alpha1
@@ -158,6 +169,7 @@ spec:
     inCluster: true
   name: ${name}
   namespace: ${CHART_DEPLOY_NAMESPACE}
+  ${config}
 EOF
 }
 
@@ -221,15 +233,71 @@ build_chart () {
 
 create_app () {
   name=$1
+  config_file=$2
   version=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
 
   echo "Creating 'app CR' with version=${version} and name=${name}"
-  create_app_cr $name $version
+  create_app_cr $name $version $config_file
 }
 
-delete_cluster
-create_cluster
-start
-build_chart ${CHART_NAME}
-create_app ${CHART_NAME}
-#delete_cluster
+verify_helm () {
+  chart_name=$1
+
+  timer=0
+  expected="DEPLOYED"
+  while true; do
+    set +e
+    status_out=$(helm --tiller-namespace giantswarm status ${chart_name} | head -n 3 | grep "STATUS:")
+    out_code=$?
+    set -e
+    status=${status_out##* }
+    if [[ $out_code != 0 ]]; then
+      echo "Helm is not ready, exit code: $out_code"
+    elif [[ $status != $expected ]]; then
+      echo "Deployment ${chart_name} is not ${expected}, current status is $status"
+    else
+      echo "Deployment ${chart_name} is ${expected}!"
+      echo "Test successful."
+      break
+    fi
+    echo "Waiting for status update..."
+    sleep 1
+    timer=$((timer+1))
+    if [[ $timer -gt $MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC ]]; then
+      echo "Deployment ${chart_name} failed to become ${expected} in ${MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC} seconds."
+      echo "Test failed."
+      exit 3
+    fi
+  done
+}
+
+run_tests_for_single_config () {
+  config_file=$1
+
+  create_cluster
+  start
+  build_chart ${CHART_NAME}
+  create_app ${CHART_NAME} $config_file
+  verify_helm ${CHART_NAME}
+  delete_cluster
+}
+
+main () {
+  delete_cluster
+
+  set +e
+  ls helm/${CHART_NAME}/ci/*.yaml 1>/dev/null 2>&1
+  out=$?
+  set -e
+  if [[ $out > 0 ]]; then
+    echo "No sample configuration files found for the tested chart. Running single test without any ConfigMap."
+    run_tests_for_single_config ""
+  else
+    for file in $(ls helm/${CHART_NAME}/ci/*.yaml); do
+      echo "Starting test run for configuration file $file"
+      run_tests_for_single_config "$file"
+    done
+  fi
+}
+
+main
