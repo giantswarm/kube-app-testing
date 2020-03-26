@@ -15,6 +15,7 @@
 # - switch CNI to calico to be compatible(-ish, screw AWS CNI)
 # - add logging with timestamps
 # - add support for pre-test hooks: installtion of dependencies, like cert-manager
+# - add version information 
 
 
 if [[ $# < 1 ]]; then
@@ -28,9 +29,7 @@ CHART_NAME=$1
 CONFIG_DIR=/tmp/kind_test
 export KUBECONFIG=${CONFIG_DIR}/kubei.config
 CLUSTER_NAME=kt
-CR_NAMESPACE=giantswarm
-#KUBECONFIG_INTERNAL_DIR=/tmp/kind_test
-#KUBECONFIG_INTERNAL=${KUBECONFIG_INTERNAL_DIR}/kubei.config
+TOOLS_NAMESPACE=giantswarm
 
 ARCHITECT_VERSION_TAG=latest
 CHART_MUSEUM_VERSION_TAG=latest
@@ -156,29 +155,10 @@ metadata:
 spec:
   catalog: testing
   version: ${version}
-#  config:
-#    configMap:
-#      name: ""
-#      namespace: ""
-#    secret:
-#      name: ""
-#      namespace: ""
   kubeConfig:
-#    context:
-#      name: ""
     inCluster: true
-#    secret:
-#      name: ""
-#      namespace: ""
   name: ${name}
   namespace: default
-#  userConfig:
-#    configMap:
-#      name: ""
-#      namespace: ""
-#    secret:
-#      name: ""
-#      namespace: ""
 EOF
 }
 
@@ -216,7 +196,7 @@ start () {
   # start chart-museum
   chart_museum_deploy
   # create giantswarm namespace
-  kubectl create ns $CR_NAMESPACE
+  kubectl create ns $TOOLS_NAMESPACE
   # start app+chart-operators
   kubectl create serviceaccount appcatalog
   kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=default:appcatalog
