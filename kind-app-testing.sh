@@ -1,4 +1,4 @@
-#!/bin/bash -ex
+#!/bin/bash -e
 
 # TODO:
 # - add CLI options
@@ -130,13 +130,9 @@ metadata:
     application.giantswarm.io/catalog-type: ""
   name: testing
 spec:
-  config:
-    configMap:
-      name: testing-catalog
-      namespace: default
   description: 'Catalog to hold charts for testing.'
   storage:
-    URL: http://chart-museum.default.svc.cluster.local:8080/
+    URL: http://chart-museum.default.svc.cluster.local:8080/charts/
     type: helm
   title: Testing Catalog
 EOF
@@ -190,6 +186,17 @@ EOF
 # functions
 ##################
 
+wait_for_resource () {
+  resource=$1
+
+  while true; do 
+    kubectl get --no-headers $resource 1>/dev/null 2>&1 && break
+    echo "Waiting for resource ${resource} to be present in cluster..."
+    sleep 1
+  done
+  echo "Resource ${resource} present."
+}
+
 create_cluster () {
   if [[ ! -d ${CONFIG_DIR} ]]; then
     mkdir ${CONFIG_DIR}
@@ -215,6 +222,12 @@ start () {
   kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=default:appcatalog
   kubectl run app-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/app-operator -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --service.kubernetes.incluster="false"
   kubectl run chart-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/chart-operator -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="false"
+  kubectl wait --for=condition=Ready pod/app-operator
+  kubectl wait --for=condition=Ready pod/chart-operator
+  wait_for_resource crd/appcatalogs.application.giantswarm.io
+  wait_for_resource crd/apps.application.giantswarm.io
+  wait_for_resource crd/charts.application.giantswarm.io
+  create_app_catalog_cr
 }
 
 build_chart () {
@@ -228,8 +241,9 @@ build_chart () {
 
 create_app () {
   name=$1
-  version=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version)
+  version=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
 
+  echo "Creating 'app CR' with version=${version} and name=${name}"
   create_app_cr $name $version
 }
 
