@@ -4,7 +4,6 @@
 # - add CLI options
 #   - `--cleanup` whether to delete the cluster after test or not
 #   - CHART_NAME ($1) arg - validate if the dir exists
-# - create App's ConfigMap/Secrets before creating App CR
 # - validate necessary tools are installed:
 #   - kind
 #   - helm (2!)
