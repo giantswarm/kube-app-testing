@@ -8,7 +8,6 @@
 # - validate necessary tools are installed:
 #   - kind
 #   - helm (2!)
-#   - awk
 # - add option to create worker nodes as well (and how many)
 # - add option to use diffrent k8s version
 # - add option to use custom kind config (docs necessary, as we need some options there)
@@ -30,9 +29,12 @@ CONFIG_DIR=/tmp/kind_test
 export KUBECONFIG=${CONFIG_DIR}/kubei.config
 CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
+CHART_DEPLOY_NAMESPACE=default
 
 ARCHITECT_VERSION_TAG=latest
 CHART_MUSEUM_VERSION_TAG=latest
+APP_OPERATOR_VERSION_TAG=latest
+CHART_OPERATOR_VERSION_TAG=latest
 
 ####################
 # Files & templates
@@ -48,6 +50,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ${name}
+  namespace: ${TOOLS_NAMESPACE}
   labels:
     app: ${name}
 spec:
@@ -83,6 +86,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: ${name}
+  namespace: ${TOOLS_NAMESPACE}
   labels:
     app: ${name}
 spec:
@@ -95,7 +99,7 @@ spec:
   selector:
     app: ${name}
 EOF
-  kubectl rollout status deployment ${name}
+  kubectl -n ${TOOLS_NAMESPACE} rollout status deployment ${name}
 }
 
 create_kind_config () {
@@ -113,9 +117,6 @@ nodes:
     hostPort: 8080
     listenAddress: "127.0.0.1"
     protocol: TCP
-  #  extraMounts:
-  #  - hostPath: /tmp/kind_test
-  #    containerPath: /tmp/kind_test
 EOF
 }
 
@@ -131,7 +132,7 @@ metadata:
 spec:
   description: 'Catalog to hold charts for testing.'
   storage:
-    URL: http://chart-museum.default.svc.cluster.local:8080/charts/
+    URL: http://chart-museum.${TOOLS_NAMESPACE}.svc.cluster.local:8080/charts/
     type: helm
   title: Testing Catalog
 EOF
@@ -146,19 +147,17 @@ apiVersion: application.giantswarm.io/v1alpha1
 kind: App
 metadata:
   name: ${name}
-  namespace: default
-
+  namespace: ${TOOLS_NAMESPACE}
   labels:
     app: ${name}
     app-operator.giantswarm.io/version: "1.0.0"
-
 spec:
   catalog: testing
   version: ${version}
   kubeConfig:
     inCluster: true
   name: ${name}
-  namespace: default
+  namespace: ${CHART_DEPLOY_NAMESPACE}
 EOF
 }
 
@@ -167,10 +166,11 @@ EOF
 ##################
 
 wait_for_resource () {
-  resource=$1
+  namespace=$1
+  resource=$2
 
   while true; do 
-    kubectl get --no-headers $resource 1>/dev/null 2>&1 && break
+    kubectl -n $namespace get --no-headers $resource 1>/dev/null 2>&1 && break
     echo "Waiting for resource ${resource} to be present in cluster..."
     sleep 1
   done
@@ -193,20 +193,20 @@ delete_cluster () {
 
 start () {
   kubeconfig=$(cat ${KUBECONFIG})
+  # create tools namespace
+  kubectl create ns $TOOLS_NAMESPACE
   # start chart-museum
   chart_museum_deploy
-  # create giantswarm namespace
-  kubectl create ns $TOOLS_NAMESPACE
   # start app+chart-operators
-  kubectl create serviceaccount appcatalog
-  kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=default:appcatalog
-  kubectl run app-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/app-operator -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --service.kubernetes.incluster="false"
-  kubectl run chart-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/chart-operator -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="false"
-  kubectl wait --for=condition=Ready pod/app-operator
-  kubectl wait --for=condition=Ready pod/chart-operator
-  wait_for_resource crd/appcatalogs.application.giantswarm.io
-  wait_for_resource crd/apps.application.giantswarm.io
-  wait_for_resource crd/charts.application.giantswarm.io
+  kubectl -n ${TOOLS_NAMESPACE} create serviceaccount appcatalog
+  kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=${TOOLS_NAMESPACE}:appcatalog
+  kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --service.kubernetes.incluster="false"
+  kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="false"
+  kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pod/app-operator
+  kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pod/chart-operator
+  wait_for_resource ${TOOLS_NAMESPACE} crd/appcatalogs.application.giantswarm.io
+  wait_for_resource ${TOOLS_NAMESPACE} crd/apps.application.giantswarm.io
+  wait_for_resource ${TOOLS_NAMESPACE} crd/charts.application.giantswarm.io
   create_app_catalog_cr
 }
 
@@ -214,7 +214,7 @@ build_chart () {
   docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} helm template --validate --dir helm/$1
   chart_log=$(helm package helm/$1)
   echo $chart_log
-  chart_name=$(echo $chart_log | awk -F "/" '{print $NF}')
+  chart_name=${chart_log##*/}
   echo "Uploading chart ${chart_name} to chart-museum..."
   curl --data-binary "@${chart_name}" http://localhost:8080/api/charts
 }
