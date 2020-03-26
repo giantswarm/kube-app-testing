@@ -1,9 +1,26 @@
 #!/bin/bash -ex
 
+# TODO:
+# - add CLI options
+#   - `--cleanup` whether to delete the cluster after test or not
+#   - CHART_NAME ($1) arg - validate if the dir exists
+# - create App's ConfigMap/Secrets before creating App CR
+# - validate necessary tools are installed:
+#   - kind
+#   - helm (2!)
+#   - awk
+# - add option to create worker nodes as well (and how many)
+# - add option to use diffrent k8s version
+# - add option to use custom kind config (docs necessary, as we need some options there)
+# - switch CNI to calico to be compatible(-ish, screw AWS CNI)
+# - add logging with timestamps
+# - add support for pre-test hooks: installtion of dependencies, like cert-manager
+
+
 if [[ $# < 1 ]]; then
   echo "Usage:"
   echo ""
-  echo "  $0 [chart_dir_name]"
+  echo "  $0 [chart_dir_name] - the name of the chart and also the dir in 'helm/' dir"
   exit 1
 fi
 CHART_NAME=$1
@@ -103,6 +120,72 @@ nodes:
 EOF
 }
 
+create_app_catalog_cr () {
+  kubectl create -f - << EOF
+apiVersion: application.giantswarm.io/v1alpha1
+kind: AppCatalog
+metadata:
+  labels:
+    app-operator.giantswarm.io/version: 1.0.0
+    application.giantswarm.io/catalog-type: ""
+  name: testing
+spec:
+  config:
+    configMap:
+      name: testing-catalog
+      namespace: default
+  description: 'Catalog to hold charts for testing.'
+  storage:
+    URL: http://chart-museum.default.svc.cluster.local:8080/
+    type: helm
+  title: Testing Catalog
+EOF
+}
+
+create_app_cr () {
+  name=$1
+  version=$2
+
+  kubectl create -f - << EOF
+apiVersion: application.giantswarm.io/v1alpha1
+kind: App
+metadata:
+  name: ${name}
+  namespace: default
+
+  labels:
+    app: ${name}
+    app-operator.giantswarm.io/version: "1.0.0"
+
+spec:
+  catalog: testing
+  version: ${version}
+#  config:
+#    configMap:
+#      name: ""
+#      namespace: ""
+#    secret:
+#      name: ""
+#      namespace: ""
+  kubeConfig:
+#    context:
+#      name: ""
+    inCluster: true
+#    secret:
+#      name: ""
+#      namespace: ""
+  name: ${name}
+  namespace: default
+#  userConfig:
+#    configMap:
+#      name: ""
+#      namespace: ""
+#    secret:
+#      name: ""
+#      namespace: ""
+EOF
+}
+
 ##################
 # functions
 ##################
@@ -128,8 +211,10 @@ start () {
   # create giantswarm namespace
   kubectl create ns $CR_NAMESPACE
   # start app+chart-operators
-  kubectl run app-operator --generator=run-pod/v1 --image=quay.io/giantswarm/app-operator -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --service.kubernetes.incluster="false"
-  kubectl run chart-operator --generator=run-pod/v1 --image=quay.io/giantswarm/chart-operator -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="false"
+  kubectl create serviceaccount appcatalog
+  kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=default:appcatalog
+  kubectl run app-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/app-operator -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --service.kubernetes.incluster="false"
+  kubectl run chart-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/chart-operator -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="false"
 }
 
 build_chart () {
@@ -137,16 +222,20 @@ build_chart () {
   chart_log=$(helm package helm/$1)
   echo $chart_log
   chart_name=$(echo $chart_log | awk -F "/" '{print $NF}')
-#  kubectl port-forward svc/chart-museum  8080:8080 &
-#  port_forward_pid=$!
   echo "Uploading chart ${chart_name} to chart-museum..."
   curl --data-binary "@${chart_name}" http://localhost:8080/api/charts
-#  kill $port_forward_pid
+}
+
+create_app () {
+  name=$1
+  version=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version)
+
+  create_app_cr $name $version
 }
 
 delete_cluster
 create_cluster
 start
 build_chart ${CHART_NAME}
+create_app ${CHART_NAME}
 #delete_cluster
-
