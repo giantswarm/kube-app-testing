@@ -7,6 +7,7 @@
 # - validate necessary tools are installed:
 #   - kind
 #   - helm (2!)
+#   - pipenv
 # - add option to create worker nodes as well (and how many)
 # - add option to use diffrent k8s version
 # - add option to use custom kind config (docs necessary, as we need some options there)
@@ -274,7 +275,28 @@ run_pytest () {
   chart_name=$1
   config_file=$2
 
-  # TODO: implement
+  if [[ ! -d "test/kind" ]]; then
+    echo "No pytest tests found in 'test/kind', skipping"
+    return
+  fi
+
+  test_res_file="junit-${chart_name}"
+  if [[ $config_file != "" ]]; then
+    test_res_file="${test_res_file}-${config_file##*/}"
+  fi
+  test_res_file="${test_res_file}.xml"
+
+  # This can be run within docker container as well, removing the need of 'pipenv'.
+  # Still, fetching dependencies inside the container with pip and pipenv takes way too long.
+  cd test/kind
+  echo "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
+  pipenv sync
+  pipenv run pytest \
+    --kube-config /tmp/kind_test/kubei.config \
+    --chart-name ${chart_name} \
+    --values-file ../../${config_file} \
+    --junitxml=../../test-results/${test_res_file}
+  cd ../..
 }
 
 run_tests_for_single_config () {
