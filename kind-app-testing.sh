@@ -314,6 +314,11 @@ run_tests_for_single_config () {
 main () {
   delete_cluster
 
+  if [[ ! -d "helm" ]]; then
+    echo "This doesn't look like top level app directory. 'helm' directory not found. Exiting."
+    exit 4
+  fi
+
   set +e
   ls helm/${CHART_NAME}/ci/*.yaml 1>/dev/null 2>&1
   out=$?
