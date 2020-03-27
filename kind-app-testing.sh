@@ -145,7 +145,7 @@ create_app_cr () {
 
   if [[ $config_file != "" ]]; then
     cm_name=${name}-testing-user-config
-    kubectl create configmap ${cm_name} --from-file=${config_file}
+    kubectl -n ${TOOLS_NAMESPACE} create configmap ${cm_name} --from-file=${config_file}
     config="userConfig:
     configMap:
       name: \"${cm_name}\"
