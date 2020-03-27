@@ -270,6 +270,13 @@ verify_helm () {
   done
 }
 
+run_pytest () {
+  chart_name=$1
+  config_file=$2
+
+  # TODO: implement
+}
+
 run_tests_for_single_config () {
   config_file=$1
 
@@ -278,6 +285,7 @@ run_tests_for_single_config () {
   build_chart ${CHART_NAME}
   create_app ${CHART_NAME} $config_file
   verify_helm ${CHART_NAME}
+  run_pytest ${CHART_NAME} $config_file
   delete_cluster
 }
 
