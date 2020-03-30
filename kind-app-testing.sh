@@ -4,7 +4,7 @@
 # - do we need tools versions (helm, kind, python) validation?
 # - add option to create worker nodes as well (and how many)
 # - add option to use diffrent k8s version
-# - add option to use custom kind config (docs necessary, as we need some options there)
+# - already available option to use custom kind config: docs necessary, as we need some options there
 # - switch CNI to calico to be compatible(-ish, screw AWS CNI)
 # - add support for pre-test hooks: installtion of dependencies, like cert-manager
 # - use external kubeconfig - to run on already existing cluster
