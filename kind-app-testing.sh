@@ -310,7 +310,7 @@ run_pytest () {
   config_file=$2
 
   if [[ ! -d "test/kind" ]]; then
-    debug "No pytest tests found in 'test/kind', skipping"
+    info "No pytest tests found in 'test/kind', skipping"
     return
   fi
 
@@ -351,23 +351,41 @@ run_tests_for_single_config () {
   info "Test successful for chart \"${chart_name}\"${extra}"
 }
 
-main () {
-  chart_name=$1
-
+parse_args () {
   if [[ $# -lt 1 ]]; then
     print_help
     exit 2
   fi
+
+  CHART_NAME=$1
 
   if [[ ! -d "helm" ]]; then
     err "This doesn't look like top level app directory. 'helm' directory not found."
     exit 3
   fi
 
-  if [[ ! -d "helm/${chart_name}" ]]; then
-    err "The 'helm/' directory doesn't contain chart named '${chart_name}'."
+  if [[ ! -d "helm/${CHART_NAME}" ]]; then
+    err "The 'helm/' directory doesn't contain chart named '${CHART_NAME}'."
     exit 4
   fi
+}
+
+validate_tools () {
+  info "Cheking for necessary tools being installed"
+  set +e
+  for app in "kind" "pipenv" "helm"; do
+    which $app 1>/dev/null 2>&1
+    exit_code=$?
+    if [[ $exit_code -gt 0 ]]; then
+      err "'$app' binary not found. Please make sure to install it."
+      exit 5
+    fi
+  done
+  set -e
+}
+
+main () {
+  chart_name=$1
 
   delete_cluster
   set +e
@@ -385,6 +403,6 @@ main () {
   fi
 }
 
-CHART_NAME=$1
-
+parse_args $@
+validate_tools
 main ${CHART_NAME}
