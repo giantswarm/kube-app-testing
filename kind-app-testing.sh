@@ -1,17 +1,16 @@
 #!/bin/bash -e
 
 # TODO:
-# - add CLI options
-#   - `--cleanup` whether to delete the cluster after test or not
+# - do we need tools versions (helm, kind, python) validation?
 # - add option to create worker nodes as well (and how many)
 # - add option to use diffrent k8s version
 # - add option to use custom kind config (docs necessary, as we need some options there)
 # - switch CNI to calico to be compatible(-ish, screw AWS CNI)
 # - add support for pre-test hooks: installtion of dependencies, like cert-manager
-# - add version information 
+# - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.1.11
+KAT_VERSION=0.1.13
 
 # config
 CONFIG_DIR=/tmp/kind_test
@@ -191,7 +190,14 @@ print_help () {
   echo ""
   echo "Usage:"
   echo ""
-  echo "  $0 [chart_dir_name] - the name of the chart and also the dir in 'helm/' dir"
+  echo "  ${0##*/} [OPTION...] -c [chart name in helm/ dir]"
+  echo ""
+  echo "Options:"
+  echo "  -h, --help                           display this help screen"
+  echo "  -k, --keep-after-test                after first test is successful, abort"
+  echo "                                       and keep the test cluster running"
+  echo "  -i, --kind-config-file [full path]   don't use the default kind.yaml config"
+  echo "                                       file, but provide your own"
 }
 
 ##################
@@ -214,8 +220,15 @@ create_cluster () {
   if [[ ! -d ${CONFIG_DIR} ]]; then
     mkdir ${CONFIG_DIR}
   fi
-  create_kind_config ${CONFIG_DIR}/kind.yaml
-  info "Creating default KinD config file ${CONFIG_DIR}/kind.yaml"
+
+  if [[ -z $KIND_CONFIG_FILE ]]; then
+    KIND_CONFIG_FILE="${CONFIG_DIR}/kind.yaml"
+    info "Creating default KinD config file ${KIND_CONFIG_FILE}"
+    create_kind_config ${KIND_CONFIG_FILE}
+  else
+    info "Using provided KinD config file ${KIND_CONFIG_FILE}"
+  fi
+
   kind create cluster --name ${CLUSTER_NAME} --config ${CONFIG_DIR}/kind.yaml
   kind get kubeconfig --name ${CLUSTER_NAME} --internal > ${KUBECONFIG}
   info "Cluster created, waiting for basic services to come up"
@@ -341,7 +354,13 @@ run_tests_for_single_config () {
   create_app ${chart_name} $config_file
   verify_helm ${chart_name}
   run_pytest ${chart_name} $config_file
-  delete_cluster
+  if [ $KEEP_AFTER_TEST ]; then
+    warn "--keep-after-test was used, I'm stopping next test config files runs (if any) to let you investigate the cluster"
+    exit 0
+  else
+    delete_cluster
+  fi
+
   extra=""
   if [[ $config_file != "" ]]; then
     extra=" and config file \"$config_file\""
@@ -350,21 +369,41 @@ run_tests_for_single_config () {
 }
 
 parse_args () {
-  if [[ $# -lt 1 ]]; then
-    print_help
-    exit 2
-  fi
+  args=$@
 
-  CHART_NAME=$1
-
-  if [[ ! -d "helm" ]]; then
-    err "This doesn't look like top level app directory. 'helm' directory not found."
-    exit 3
-  fi
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      -h|--help) 
+        print_help
+        exit 0
+        ;;
+      -c|--chart) 
+        CHART_NAME=$2
+        shift 2
+        ;;
+      -k|--keep-after-test) 
+        KEEP_AFTER_TEST=1
+        shift
+        ;;
+      -i|--kind-config-file)
+        KIND_CONFIG_FILE=$2
+        shift 2
+        ;;
+      *) 
+        print_help
+        exit 2
+        ;;
+    esac
+  done
 
   if [[ ! -d "helm/${CHART_NAME}" ]]; then
     err "The 'helm/' directory doesn't contain chart named '${CHART_NAME}'."
-    exit 4
+    exit 3
+  fi
+
+  if [[ ! -z $KIND_CONFIG_FILE && ! -f $KIND_CONFIG_FILE ]]; then
+    err "KinD config file '$KIND_CONFIG_FILE' was specified, but doesn't exist."
+    exit 3 
   fi
 }
 
@@ -376,7 +415,7 @@ validate_tools () {
     exit_code=$?
     if [[ $exit_code -gt 0 ]]; then
       err "'$app' binary not found. Please make sure to install it."
-      exit 5
+      exit 4
     fi
   done
   info "Listing kind version"
