@@ -3,10 +3,6 @@
 # TODO:
 # - add CLI options
 #   - `--cleanup` whether to delete the cluster after test or not
-# - validate necessary tools are installed:
-#   - kind
-#   - helm (2!)
-#   - pipenv
 # - add option to create worker nodes as well (and how many)
 # - add option to use diffrent k8s version
 # - add option to use custom kind config (docs necessary, as we need some options there)
@@ -14,15 +10,17 @@
 # - add support for pre-test hooks: installtion of dependencies, like cert-manager
 # - add version information 
 
-KAT_VERSION=0.1.10
+# const
+KAT_VERSION=0.1.11
 
-
+# config
 CONFIG_DIR=/tmp/kind_test
 export KUBECONFIG=${CONFIG_DIR}/kubei.config
 CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
 CHART_DEPLOY_NAMESPACE=default
 MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC=60
+PIPENV_PYTHON_VERSION=3.7
 
 ARCHITECT_VERSION_TAG=latest
 CHART_MUSEUM_VERSION_TAG=latest
@@ -324,7 +322,7 @@ run_pytest () {
   # Still, fetching dependencies inside the container with pip and pipenv takes way too long.
   cd test/kind
   info "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
-  pipenv sync
+  pipenv --python ${PIPENV_PYTHON_VERSION} sync
   pipenv run pytest \
     --kube-config /tmp/kind_test/kubei.config \
     --chart-name ${chart_name} \
@@ -381,6 +379,12 @@ validate_tools () {
       exit 5
     fi
   done
+  info "Listing kind version"
+  kind version
+  info "Listing helm version"
+  helm version 2>/dev/null
+  info "Listing pipenv version"
+  pipenv --version
   set -e
 }
 
