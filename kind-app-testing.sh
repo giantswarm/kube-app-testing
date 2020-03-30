@@ -3,7 +3,6 @@
 # TODO:
 # - add CLI options
 #   - `--cleanup` whether to delete the cluster after test or not
-#   - CHART_NAME ($1) arg - validate if the dir exists
 # - validate necessary tools are installed:
 #   - kind
 #   - helm (2!)
@@ -12,18 +11,11 @@
 # - add option to use diffrent k8s version
 # - add option to use custom kind config (docs necessary, as we need some options there)
 # - switch CNI to calico to be compatible(-ish, screw AWS CNI)
-# - add logging with timestamps
 # - add support for pre-test hooks: installtion of dependencies, like cert-manager
 # - add version information 
 
+KAT_VERSION=0.1.10
 
-if [[ $# -lt 1 ]]; then
-  echo "Usage:"
-  echo ""
-  echo "  $0 [chart_dir_name] - the name of the chart and also the dir in 'helm/' dir"
-  exit 1
-fi
-CHART_NAME=$1
 
 CONFIG_DIR=/tmp/kind_test
 export KUBECONFIG=${CONFIG_DIR}/kubei.config
@@ -174,6 +166,37 @@ EOF
 }
 
 ##################
+# logging
+##################
+
+log () {
+  level=$1
+  shift 1
+  date --rfc-3339=seconds -u | tr -d '\n'
+  echo " [${level}] $@"
+}
+
+info () {
+  log "INFO" "$@"
+}
+
+warn () {
+  log "WARN" "$@"
+}
+
+err () {
+  log "ERROR" "$@"
+}
+
+print_help () {
+  echo "KAT v${KAT_VERSION} - KinD Application Testing"
+  echo ""
+  echo "Usage:"
+  echo ""
+  echo "  $0 [chart_dir_name] - the name of the chart and also the dir in 'helm/' dir"
+}
+
+##################
 # functions
 ##################
 
@@ -183,10 +206,10 @@ wait_for_resource () {
 
   while true; do 
     kubectl -n $namespace get --no-headers $resource 1>/dev/null 2>&1 && break
-    echo "Waiting for resource ${resource} to be present in cluster..."
+    info "Waiting for resource ${resource} to be present in cluster..."
     sleep 1
   done
-  echo "Resource ${resource} present."
+  info "Resource ${resource} present."
 }
 
 create_cluster () {
@@ -194,12 +217,15 @@ create_cluster () {
     mkdir ${CONFIG_DIR}
   fi
   create_kind_config ${CONFIG_DIR}/kind.yaml
+  info "Creating default KinD config file ${CONFIG_DIR}/kind.yaml"
   kind create cluster --name ${CLUSTER_NAME} --config ${CONFIG_DIR}/kind.yaml
   kind get kubeconfig --name ${CLUSTER_NAME} --internal > ${KUBECONFIG}
+  info "Cluster created, waiting for basic services to come up"
   kubectl -n kube-system rollout status deployment coredns
 }
 
 delete_cluster () {
+  info "Deleting cluster ${CLUSTER_NAME}"
   kind delete cluster --name ${CLUSTER_NAME}
 }
 
@@ -208,27 +234,37 @@ start () {
   # create tools namespace
   kubectl create ns $TOOLS_NAMESPACE
   # start chart-museum
+  info "Deploying \"chart-museum\""
   chart_museum_deploy
   # start app+chart-operators
+  info "Deploying \"app-operator\""
   kubectl -n ${TOOLS_NAMESPACE} create serviceaccount appcatalog
   kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=${TOOLS_NAMESPACE}:appcatalog
   kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --service.kubernetes.incluster="false"
+  info "Deploying \"chart-operator\""
   kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="false"
+  info "Waiting for services to come up"
   kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pod/app-operator
   kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pod/chart-operator
+  info "Waiting for AppCatalog/App/Chart CRDs to be registered with API server"
   wait_for_resource ${TOOLS_NAMESPACE} crd/appcatalogs.application.giantswarm.io
   wait_for_resource ${TOOLS_NAMESPACE} crd/apps.application.giantswarm.io
   wait_for_resource ${TOOLS_NAMESPACE} crd/charts.application.giantswarm.io
+  info "Creating AppCatalog CR for \"chart-museum\""
   create_app_catalog_cr
 }
 
 build_chart () {
-  docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} helm template --validate --dir helm/$1
-  chart_log=$(helm package helm/$1)
+  chart_name=$1
+
+  info "Validating chart \"${chart_name}\" with architect"
+  docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} helm template --validate --dir helm/${chart_name}
+  info "Packaging chart \"${chart_name}\" with helm"
+  chart_log=$(helm package helm/$chart_name)
   echo $chart_log
-  chart_name=${chart_log##*/}
-  echo "Uploading chart ${chart_name} to chart-museum..."
-  curl --data-binary "@${chart_name}" http://localhost:8080/api/charts
+  chart_file_name=${chart_log##*/}
+  info "Uploading chart ${chart_file_name} to chart-museum..."
+  curl --data-binary "@${chart_file_name}" http://localhost:8080/api/charts
 }
 
 create_app () {
@@ -236,7 +272,7 @@ create_app () {
   config_file=$2
   version=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
 
-  echo "Creating 'app CR' with version=${version} and name=${name}"
+  info "Creating 'app CR' with version=${version} and name=${name}"
   create_app_cr $name $version $config_file
 }
 
@@ -247,26 +283,24 @@ verify_helm () {
   expected="DEPLOYED"
   while true; do
     set +e
-    status_out=$(helm --tiller-namespace giantswarm status ${chart_name} | head -n 3 | grep "STATUS:")
+    status_out=$(helm --tiller-namespace giantswarm status ${chart_name} 2>&1 | head -n 3 | grep "STATUS:")
     out_code=$?
     set -e
     status=${status_out##* }
     if [[ $out_code != 0 ]]; then
-      echo "Helm is not ready, exit code: $out_code"
+      info "Helm is not ready, exit code: $out_code"
     elif [[ $status != $expected ]]; then
-      echo "Deployment ${chart_name} is not ${expected}, current status is $status"
+      info "Deployment ${chart_name} is not ${expected}, current status is $status"
     else
-      echo "Deployment ${chart_name} is ${expected}!"
-      echo "Test successful."
+      info "Deployment ${chart_name} is ${expected}!"
       break
     fi
-    echo "Waiting for status update..."
     sleep 1
     timer=$((timer+1))
     if [[ $timer -gt $MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC ]]; then
-      echo "Deployment ${chart_name} failed to become ${expected} in ${MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC} seconds."
-      echo "Test failed."
-      exit 3
+      err "Deployment ${chart_name} failed to become ${expected} in ${MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC} seconds."
+      err "Test failed."
+      exit 1
     fi
   done
 }
@@ -276,7 +310,7 @@ run_pytest () {
   config_file=$2
 
   if [[ ! -d "test/kind" ]]; then
-    echo "No pytest tests found in 'test/kind', skipping"
+    debug "No pytest tests found in 'test/kind', skipping"
     return
   fi
 
@@ -284,54 +318,73 @@ run_pytest () {
   if [[ $config_file != "" ]]; then
     test_res_file="${test_res_file}-${config_file##*/}"
   fi
-  test_res_file="${test_res_file}.xml"
+  test_res_file="test-results/${test_res_file}.xml"
 
   # This can be run within docker container as well, removing the need of 'pipenv'.
   # Still, fetching dependencies inside the container with pip and pipenv takes way too long.
   cd test/kind
-  echo "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
+  info "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
   pipenv sync
   pipenv run pytest \
     --kube-config /tmp/kind_test/kubei.config \
     --chart-name ${chart_name} \
     --values-file ../../${config_file} \
-    --junitxml=../../test-results/${test_res_file}
+    --junitxml=../../${test_res_file}
   cd ../..
 }
 
 run_tests_for_single_config () {
-  config_file=$1
+  chart_name=$1
+  config_file=$2
 
   create_cluster
   start
-  build_chart ${CHART_NAME}
-  create_app ${CHART_NAME} $config_file
-  verify_helm ${CHART_NAME}
-  run_pytest ${CHART_NAME} $config_file
+  build_chart ${chart_name}
+  create_app ${chart_name} $config_file
+  verify_helm ${chart_name}
+  run_pytest ${chart_name} $config_file
   delete_cluster
+  extra=""
+  if [[ $config_file != "" ]]; then
+    extra=" and config file \"$config_file\""
+  fi
+  info "Test successful for chart \"${chart_name}\"${extra}"
 }
 
 main () {
-  delete_cluster
+  chart_name=$1
+
+  if [[ $# -lt 1 ]]; then
+    print_help
+    exit 2
+  fi
 
   if [[ ! -d "helm" ]]; then
-    echo "This doesn't look like top level app directory. 'helm' directory not found. Exiting."
+    err "This doesn't look like top level app directory. 'helm' directory not found."
+    exit 3
+  fi
+
+  if [[ ! -d "helm/${chart_name}" ]]; then
+    err "The 'helm/' directory doesn't contain chart named '${chart_name}'."
     exit 4
   fi
 
+  delete_cluster
   set +e
-  ls helm/${CHART_NAME}/ci/*.yaml 1>/dev/null 2>&1
+  ls helm/${chart_name}/ci/*.yaml 1>/dev/null 2>&1
   out=$?
   set -e
   if [[ $out > 0 ]]; then
-    echo "No sample configuration files found for the tested chart. Running single test without any ConfigMap."
-    run_tests_for_single_config ""
+    info "No sample configuration files found for the tested chart. Running single test without any ConfigMap."
+    run_tests_for_single_config ${chart_name} ""
   else
-    for file in $(ls helm/${CHART_NAME}/ci/*.yaml); do
-      echo "Starting test run for configuration file $file"
-      run_tests_for_single_config "$file"
+    for file in $(ls helm/${chart_name}/ci/*.yaml); do
+      info "Starting test run for configuration file $file"
+      run_tests_for_single_config ${chart_name} "$file"
     done
   fi
 }
 
-main
+CHART_NAME=$1
+
+main ${CHART_NAME}
