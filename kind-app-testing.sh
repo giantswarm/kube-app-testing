@@ -208,7 +208,7 @@ print_help () {
   echo "This script builds and tests a helm chart using a kind cluster. The only required"
   echo "parameter is [chart name], which needs to be a name of the chart and also a directory"
   echo "name in the \"helm/\" directory. If there are YAML files present in the directory"
-  echo "helm/\[chart name\]/ci\", a full test starting with creation of a new clean cluster"
+  echo "helm/[chart name]/ci\", a full test starting with creation of a new clean cluster"
   echo "will be executed for each one of them". 
   echo "If there's a file \"helm/[chart name]/si/pre-test-hook.sh\", it will be executed after"
   echo "the cluster is ready to deploy the tested application, but before the application"
