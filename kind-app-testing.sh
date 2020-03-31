@@ -288,6 +288,9 @@ start () {
 build_chart () {
   chart_name=$1
 
+  if [[ -d ${HOME}/.helm ]]; then
+    helm init -c
+  fi
   info "Validating chart \"${chart_name}\" with architect"
   docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} helm template --validate --dir helm/${chart_name}
   info "Packaging chart \"${chart_name}\" with helm"
