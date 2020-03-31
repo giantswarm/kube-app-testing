@@ -6,11 +6,10 @@
 # - add option to use diffrent k8s version
 # - already available option to use custom kind config: docs necessary, as we need some options there
 # - switch CNI to calico to be compatible(-ish, screw AWS CNI)
-# - add support for pre-test hooks: installtion of dependencies, like cert-manager
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.1.13
+KAT_VERSION=0.1.14
 
 # config
 CONFIG_DIR=/tmp/kind_test
@@ -20,7 +19,10 @@ TOOLS_NAMESPACE=giantswarm
 CHART_DEPLOY_NAMESPACE=default
 MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC=60
 PIPENV_PYTHON_VERSION=3.7
+TEST_CONFIG_FILES_SUBPATH="ci/*.yaml"
+PRE_TEST_SCRIPT_PATH="ci/pre-test-hook.sh"
 
+# docker image tags
 ARCHITECT_VERSION_TAG=latest
 CHART_MUSEUM_VERSION_TAG=latest
 APP_OPERATOR_VERSION_TAG=latest
@@ -193,11 +195,13 @@ print_help () {
   echo "  ${0##*/} [OPTION...] -c [chart name in helm/ dir]"
   echo ""
   echo "Options:"
-  echo "  -h, --help                           display this help screen"
-  echo "  -k, --keep-after-test                after first test is successful, abort"
-  echo "                                       and keep the test cluster running"
-  echo "  -i, --kind-config-file [full path]   don't use the default kind.yaml config"
-  echo "                                       file, but provide your own"
+  echo "  -h, --help                      display this help screen"
+  echo "  -k, --keep-after-test           after first test is successful, abort and keep"
+  echo "                                  the test cluster running"
+  echo "  -i, --kind-config-file [path]   don't use the default kind.yaml config file,"
+  echo "                                  but provide your own"
+  echo "  -p, --pre-script-file [path]    override the default path to look for the"
+  echo "                                  pre-test hook script file"
 }
 
 ##################
@@ -344,6 +348,24 @@ run_pytest () {
   cd ../..
 }
 
+run_pre_test_hook () {
+  chart_name=$1
+
+  if [[ -z ${OVERRIDEN_PRE_SCRIPT_PATH} ]]; then
+    script_path="helm/${chart_name}/${PRE_TEST_SCRIPT_PATH}"
+  else
+    script_path="${OVERRIDEN_PRE_SCRIPT_PATH}"
+  fi
+
+  if [[ ! -f ${script_path} ]]; then
+    info "No pre-test init script found in ${script_path}."
+    return
+  fi
+
+  info "Executing pre-test script from ${script_path}."
+  ${script_path}
+}
+
 run_tests_for_single_config () {
   chart_name=$1
   config_file=$2
@@ -351,6 +373,7 @@ run_tests_for_single_config () {
   create_cluster
   start
   build_chart ${chart_name}
+  run_pre_test_hook ${chart_name}
   create_app ${chart_name} $config_file
   verify_helm ${chart_name}
   run_pytest ${chart_name} $config_file
@@ -387,6 +410,10 @@ parse_args () {
         ;;
       -i|--kind-config-file)
         KIND_CONFIG_FILE=$2
+        shift 2
+        ;;
+      -p|--pre-script-path)
+        OVERRIDEN_PRE_SCRIPT_PATH=$2
         shift 2
         ;;
       *) 
@@ -432,14 +459,14 @@ main () {
 
   delete_cluster
   set +e
-  ls helm/${chart_name}/ci/*.yaml 1>/dev/null 2>&1
+  ls helm/${chart_name}/${TEST_CONFIG_FILES_SUBPATH} 1>/dev/null 2>&1
   out=$?
   set -e
   if [[ $out > 0 ]]; then
     info "No sample configuration files found for the tested chart. Running single test without any ConfigMap."
     run_tests_for_single_config ${chart_name} ""
   else
-    for file in $(ls helm/${chart_name}/ci/*.yaml); do
+    for file in $(ls helm/${chart_name}/${TEST_CONFIG_FILES_SUBPATH}); do
       info "Starting test run for configuration file $file"
       run_tests_for_single_config ${chart_name} "$file"
     done
