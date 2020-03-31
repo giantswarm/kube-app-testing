@@ -18,7 +18,6 @@ CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
 CHART_DEPLOY_NAMESPACE=default
 MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC=60
-PIPENV_PYTHON_VERSION=3.7
 TEST_CONFIG_FILES_SUBPATH="ci/*.yaml"
 PRE_TEST_SCRIPT_PATH="ci/pre-test-hook.sh"
 
@@ -358,7 +357,7 @@ run_pytest () {
   # Still, fetching dependencies inside the container with pip and pipenv takes way too long.
   cd test/kind
   info "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
-  pipenv --python ${PIPENV_PYTHON_VERSION} sync
+  pipenv --python --three sync
   pipenv run pytest \
     --kube-config /tmp/kind_test/kubei.config \
     --chart-name ${chart_name} \
