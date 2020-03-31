@@ -216,7 +216,7 @@ print_help () {
   echo "In the next step the chart is built, pushed to the chart repository in the cluster"
   echo "and the App CR is created to deploy the application."
   echo "The last (and optional) step is to execute functional test. If the directory"
-  echo "\"test/kind\" is present in the top level directory, the command \"pipenv exec pytest\""
+  echo "\"test/kind\" is present in the top level directory, the command \"pipenv run pytest\""
   echo "is executed as the last step."
 }
 
