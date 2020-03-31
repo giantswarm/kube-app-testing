@@ -357,7 +357,7 @@ run_pytest () {
   # Still, fetching dependencies inside the container with pip and pipenv takes way too long.
   cd test/kind
   info "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
-  pipenv --python --three sync
+  pipenv --three sync
   pipenv run pytest \
     --kube-config /tmp/kind_test/kubei.config \
     --chart-name ${chart_name} \
