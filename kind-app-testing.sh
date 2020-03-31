@@ -288,7 +288,7 @@ start () {
 build_chart () {
   chart_name=$1
 
-  if [[ -d ${HOME}/.helm ]]; then
+  if [[ ! -d ${HOME}/.helm ]]; then
     helm init -c
   fi
   info "Validating chart \"${chart_name}\" with architect"
