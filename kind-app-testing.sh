@@ -353,17 +353,19 @@ run_pytest () {
   fi
   test_res_file="test-results/${test_res_file}.xml"
 
-  # This can be run within docker container as well, removing the need of 'pipenv'.
-  # Still, fetching dependencies inside the container with pip and pipenv takes way too long.
-  cd test/kind
+  for dir in ".local" ".cache"; do
+    if [[ -d /tmp/kat/${dir} ]]; then
+      mkdir -p /tmp/kat/${dir}
+    fi
+  done
+
   info "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
-  pipenv --three sync
-  pipenv run pytest \
-    --kube-config /tmp/kind_test/kubei.config \
-    --chart-name ${chart_name} \
-    --values-file ../../${config_file} \
-    --junitxml=../../${test_res_file}
-  cd ../..
+  docker run -it --rm \
+    -v /tmp/kat/.local:/.local \
+    -v /tmp/kat/.cache:/.cache \
+    -v `pwd`:/chart -w /chart \
+    -u ${UID}:${GID} python:3.7-alpine sh \
+    -c 'pip install --user pipenv && cd test/kind && PATH=/.local/bin:$PATH pipenv sync && PATH=/.local/bin:$PATH pipenv run pytest'
 }
 
 run_pre_test_hook () {
@@ -455,7 +457,7 @@ parse_args () {
 validate_tools () {
   info "Cheking for necessary tools being installed"
   set +e
-  for app in "kind" "pipenv" "helm"; do
+  for app in "kind" "helm"; do
     which $app 1>/dev/null 2>&1
     exit_code=$?
     if [[ $exit_code -gt 0 ]]; then
@@ -467,8 +469,6 @@ validate_tools () {
   kind version
   info "Listing helm version"
   helm version 2>/dev/null
-  info "Listing pipenv version"
-  pipenv --version
   set -e
 }
 
@@ -493,4 +493,5 @@ main () {
 
 parse_args $@
 validate_tools
-main ${CHART_NAME}
+#main ${CHART_NAME}
+run_pytest ${CHART_NAME} ""
