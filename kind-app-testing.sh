@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.1.14
+KAT_VERSION=0.2.2
 
 # config
 CONFIG_DIR=/tmp/kind_test
@@ -23,9 +23,11 @@ PRE_TEST_SCRIPT_PATH="ci/pre-test-hook.sh"
 
 # docker image tags
 ARCHITECT_VERSION_TAG=latest
-CHART_MUSEUM_VERSION_TAG=latest
 APP_OPERATOR_VERSION_TAG=latest
 CHART_OPERATOR_VERSION_TAG=latest
+CHART_MUSEUM_VERSION_TAG=v0.12.0
+PYTHON_VERSION_TAG=3.7-alpine
+CHART_TESTING_VERSION_TAG=v2.4.0
 
 ####################
 # Files & templates
@@ -195,6 +197,7 @@ print_help () {
   echo ""
   echo "Options:"
   echo "  -h, --help                      display this help screen"
+  echo "  -l, --lint                      lint the chart using 'chart-testing'"
   echo "  -k, --keep-after-test           after first test is successful, abort and keep"
   echo "                                  the test cluster running"
   echo "  -i, --kind-config-file [path]   don't use the default kind.yaml config file,"
@@ -202,7 +205,7 @@ print_help () {
   echo "  -p, --pre-script-file [path]    override the default path to look for the"
   echo "                                  pre-test hook script file"
   echo ""
-  echo "Requirements: kind, helm, pipenv."
+  echo "Requirements: kind, helm, curl."
   echo ""
   echo "This script builds and tests a helm chart using a kind cluster. The only required"
   echo "parameter is [chart name], which needs to be a name of the chart and also a directory"
@@ -284,20 +287,42 @@ start () {
   create_app_catalog_cr
 }
 
-build_chart () {
+validate_chart () {
   chart_name=$1
 
   if [[ ! -d ${HOME}/.helm ]]; then
     helm init -c
   fi
+
+  info "Taking backups of 'Chart.yaml' and 'values.yaml' before 'architect' alters them"
+  cp helm/${chart_name}/Chart.yaml helm/${chart_name}/Chart.yaml.back
+  cp helm/${chart_name}/values.yaml helm/${chart_name}/values.yaml.back
+
   info "Validating chart \"${chart_name}\" with architect"
   docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} helm template --validate --dir helm/${chart_name}
+
+  if [[ ! -z $LINT_CHART ]]; then
+    info "Linting chart \"${chart_name}\" with \"ct\""
+    docker run -it --rm -v `pwd`:/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG} sh -c 'helm init -c && ct lint --validate-maintainers=false --charts="helm/giantswarm-todo-app"'
+  fi
+}
+
+build_chart () {
+  chart_name=$1
+
   info "Packaging chart \"${chart_name}\" with helm"
   chart_log=$(helm package helm/$chart_name)
   echo $chart_log
-  chart_file_name=${chart_log##*/}
-  info "Uploading chart ${chart_file_name} to chart-museum..."
-  curl --data-binary "@${chart_file_name}" http://localhost:8080/api/charts
+  CHART_FILE_NAME=${chart_log##*/}
+
+  info "Restoring backups of 'Chart.yaml' and 'values.yaml' to revert changes 'architect' did."
+  mv helm/${chart_name}/Chart.yaml.back helm/${chart_name}/Chart.yaml
+  mv helm/${chart_name}/values.yaml.back helm/${chart_name}/values.yaml
+}
+
+upload_chart () {
+  info "Uploading chart ${CHART_FILE_NAME} to chart-museum..."
+  curl --data-binary "@${CHART_FILE_NAME}" http://localhost:8080/api/charts
 }
 
 create_app () {
@@ -353,17 +378,27 @@ run_pytest () {
   fi
   test_res_file="test-results/${test_res_file}.xml"
 
-  # This can be run within docker container as well, removing the need of 'pipenv'.
-  # Still, fetching dependencies inside the container with pip and pipenv takes way too long.
-  cd test/kind
+  for dir in ".local" ".cache"; do
+    if [[ -d /tmp/kat/${dir} ]]; then
+      mkdir -p /tmp/kat/${dir}
+    fi
+  done
+
   info "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
-  pipenv --three sync
-  pipenv run pytest \
-    --kube-config /tmp/kind_test/kubei.config \
-    --chart-name ${chart_name} \
-    --values-file ../../${config_file} \
-    --junitxml=../../${test_res_file}
-  cd ../..
+  pipenv_cmd='PATH=$HOME/.local/bin:$PATH pipenv sync && PATH=$HOME/.local/bin:$PATH pipenv run pytest'
+  docker run -it --rm \
+    -v /tmp/kat/.local:/root/.local \
+    -v /tmp/kat/.cache:/root/.cache \
+    -v `pwd`:/chart -w /chart \
+    -v /tmp/kind_test/kubei.config:/kube.config:ro \
+    python:${PYTHON_VERSION_TAG} sh \
+    -c "pip install --user pipenv \
+    && cd test/kind \
+    && $pipenv_cmd \
+      --kube-config /kube.config \
+      --chart-name ${chart_name} \
+      --values-file ../../${config_file} \
+      --junitxml=../../${test_res_file}"
 }
 
 run_pre_test_hook () {
@@ -390,7 +425,7 @@ run_tests_for_single_config () {
 
   create_cluster
   start
-  build_chart ${chart_name}
+  upload_chart ${chart_name}
   run_pre_test_hook ${chart_name}
   create_app ${chart_name} $config_file
   verify_helm ${chart_name}
@@ -434,6 +469,10 @@ parse_args () {
         OVERRIDEN_PRE_SCRIPT_PATH=$2
         shift 2
         ;;
+      -l|--lint)
+        LINT_CHART=1
+        shift 1
+        ;;
       *) 
         print_help
         exit 2
@@ -455,7 +494,7 @@ parse_args () {
 validate_tools () {
   info "Cheking for necessary tools being installed"
   set +e
-  for app in "kind" "pipenv" "helm"; do
+  for app in "kind" "helm" "curl"; do
     which $app 1>/dev/null 2>&1
     exit_code=$?
     if [[ $exit_code -gt 0 ]]; then
@@ -467,8 +506,6 @@ validate_tools () {
   kind version
   info "Listing helm version"
   helm version 2>/dev/null
-  info "Listing pipenv version"
-  pipenv --version
   set -e
 }
 
@@ -492,5 +529,8 @@ main () {
 }
 
 parse_args $@
+info "kubernetes-app-testing v${KAT_VERSION}"
 validate_tools
+validate_chart ${CHART_NAME}
+build_chart ${CHART_NAME}
 main ${CHART_NAME}
