@@ -294,6 +294,10 @@ validate_chart () {
     helm init -c
   fi
 
+  info "Taking backups of 'Chart.yaml' and 'values.yaml' before 'architect' alters them"
+  cp helm/${chart_name}/Chart.yaml helm/${chart_name}/Chart.yaml.back
+  cp helm/${chart_name}/values.yaml helm/${chart_name}/values.yaml.back
+
   info "Validating chart \"${chart_name}\" with architect"
   docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} helm template --validate --dir helm/${chart_name}
 
@@ -312,6 +316,10 @@ build_chart () {
   chart_file_name=${chart_log##*/}
   info "Uploading chart ${chart_file_name} to chart-museum..."
   curl --data-binary "@${chart_file_name}" http://localhost:8080/api/charts
+
+  info "Restoring backups of 'Chart.yaml' and 'values.yaml' to revert changes 'architect' did."
+  mv helm/${chart_name}/Chart.yaml.back helm/${chart_name}/Chart.yaml
+  mv helm/${chart_name}/values.yaml.back helm/${chart_name}/values.yaml
 }
 
 create_app () {
