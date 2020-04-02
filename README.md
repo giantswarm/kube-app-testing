@@ -4,6 +4,10 @@ This script builds and tests a helm chart using a kind cluster. The only require
 parameter is `[chart name]`, which needs to be a name of the chart which is present
 in directory `helm/`.
 
+## Installation
+
+Checkout the repo and make `kind-app-testing.sh` executable and visible in your `$PATH`.
+
 ## Usage
 
 Type:
@@ -69,7 +73,7 @@ python tests, follow this steps:
    pip install pipenv
    ```
 
-2. Go to your application repo, create the directory `test/kind` and `cd to it
+2. Go to your application repo, create the directory `test/kind` and `cd` to it
 
    ```bash
    mkdir test/kind
