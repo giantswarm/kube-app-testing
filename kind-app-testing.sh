@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.2.1
+KAT_VERSION=0.2.2
 
 # config
 CONFIG_DIR=/tmp/kind_test
@@ -205,7 +205,7 @@ print_help () {
   echo "  -p, --pre-script-file [path]    override the default path to look for the"
   echo "                                  pre-test hook script file"
   echo ""
-  echo "Requirements: kind, helm."
+  echo "Requirements: kind, helm, curl."
   echo ""
   echo "This script builds and tests a helm chart using a kind cluster. The only required"
   echo "parameter is [chart name], which needs to be a name of the chart and also a directory"
@@ -313,13 +313,16 @@ build_chart () {
   info "Packaging chart \"${chart_name}\" with helm"
   chart_log=$(helm package helm/$chart_name)
   echo $chart_log
-  chart_file_name=${chart_log##*/}
-  info "Uploading chart ${chart_file_name} to chart-museum..."
-  curl --data-binary "@${chart_file_name}" http://localhost:8080/api/charts
+  CHART_FILE_NAME=${chart_log##*/}
 
   info "Restoring backups of 'Chart.yaml' and 'values.yaml' to revert changes 'architect' did."
   mv helm/${chart_name}/Chart.yaml.back helm/${chart_name}/Chart.yaml
   mv helm/${chart_name}/values.yaml.back helm/${chart_name}/values.yaml
+}
+
+upload_chart () {
+  info "Uploading chart ${CHART_FILE_NAME} to chart-museum..."
+  curl --data-binary "@${CHART_FILE_NAME}" http://localhost:8080/api/charts
 }
 
 create_app () {
@@ -420,10 +423,9 @@ run_tests_for_single_config () {
   chart_name=$1
   config_file=$2
 
-  validate_chart ${chart_name}
   create_cluster
   start
-  build_chart ${chart_name}
+  upload_chart ${chart_name}
   run_pre_test_hook ${chart_name}
   create_app ${chart_name} $config_file
   verify_helm ${chart_name}
@@ -492,7 +494,7 @@ parse_args () {
 validate_tools () {
   info "Cheking for necessary tools being installed"
   set +e
-  for app in "kind" "helm"; do
+  for app in "kind" "helm" "curl"; do
     which $app 1>/dev/null 2>&1
     exit_code=$?
     if [[ $exit_code -gt 0 ]]; then
@@ -528,4 +530,6 @@ main () {
 
 parse_args $@
 validate_tools
+validate_chart ${CHART_NAME}
+build_chart ${CHART_NAME}
 main ${CHART_NAME}
