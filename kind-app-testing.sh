@@ -528,8 +528,8 @@ main () {
   fi
 }
 
-info "kubernetes-app-testing v${KAT_VERSION}"
 parse_args $@
+info "kubernetes-app-testing v${KAT_VERSION}"
 validate_tools
 validate_chart ${CHART_NAME}
 build_chart ${CHART_NAME}
