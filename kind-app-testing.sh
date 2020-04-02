@@ -26,6 +26,7 @@ ARCHITECT_VERSION_TAG=latest
 CHART_MUSEUM_VERSION_TAG=latest
 APP_OPERATOR_VERSION_TAG=latest
 CHART_OPERATOR_VERSION_TAG=latest
+PYTHON_VERSION_TAG=3.7-alpine
 
 ####################
 # Files & templates
@@ -202,7 +203,7 @@ print_help () {
   echo "  -p, --pre-script-file [path]    override the default path to look for the"
   echo "                                  pre-test hook script file"
   echo ""
-  echo "Requirements: kind, helm, pipenv."
+  echo "Requirements: kind, helm."
   echo ""
   echo "This script builds and tests a helm chart using a kind cluster. The only required"
   echo "parameter is [chart name], which needs to be a name of the chart and also a directory"
@@ -360,12 +361,20 @@ run_pytest () {
   done
 
   info "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
+  pipenv_cmd='PATH=$HOME/.local/bin:$PATH pipenv sync && PATH=$HOME/.local/bin:$PATH pipenv run pytest'
   docker run -it --rm \
-    -v /tmp/kat/.local:/.local \
-    -v /tmp/kat/.cache:/.cache \
+    -v /tmp/kat/.local:/root/.local \
+    -v /tmp/kat/.cache:/root/.cache \
     -v `pwd`:/chart -w /chart \
-    -u ${UID}:${GID} python:3.7-alpine sh \
-    -c 'pip install --user pipenv && cd test/kind && PATH=/.local/bin:$PATH pipenv sync && PATH=/.local/bin:$PATH pipenv run pytest'
+    -v /tmp/kind_test/kubei.config:/kube.config:ro \
+    python:${PYTHON_VERSION_TAG} sh \
+    -c "pip install --user pipenv \
+    && cd test/kind \
+    && $pipenv_cmd \
+      --kube-config /kube.config \
+      --chart-name ${chart_name} \
+      --values-file ../../${config_file} \
+      --junitxml=../../${test_res_file}"
 }
 
 run_pre_test_hook () {
@@ -493,5 +502,4 @@ main () {
 
 parse_args $@
 validate_tools
-#main ${CHART_NAME}
-run_pytest ${CHART_NAME} ""
+main ${CHART_NAME}
