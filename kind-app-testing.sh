@@ -303,7 +303,7 @@ validate_chart () {
 
   if [[ ! -z $LINT_CHART ]]; then
     info "Linting chart \"${chart_name}\" with \"ct\""
-    docker run -it --rm -v `pwd`:/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG} sh -c 'helm init -c && ct lint --validate-maintainers=false --charts="helm/giantswarm-todo-app"'
+    docker run -it --rm -v `pwd`:/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG} sh -c "helm init -c && ct lint --validate-maintainers=false --charts=\"helm/${chart_name}\""
   fi
 }
 
