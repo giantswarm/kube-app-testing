@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.1.14
+KAT_VERSION=0.2.1
 
 # config
 CONFIG_DIR=/tmp/kind_test
@@ -27,6 +27,7 @@ CHART_MUSEUM_VERSION_TAG=latest
 APP_OPERATOR_VERSION_TAG=latest
 CHART_OPERATOR_VERSION_TAG=latest
 PYTHON_VERSION_TAG=3.7-alpine
+CHART_TESTING_VERSION_TAG=v2.4.0
 
 ####################
 # Files & templates
@@ -196,6 +197,7 @@ print_help () {
   echo ""
   echo "Options:"
   echo "  -h, --help                      display this help screen"
+  echo "  -l, --lint                      lint the chart using 'chart-testing'"
   echo "  -k, --keep-after-test           after first test is successful, abort and keep"
   echo "                                  the test cluster running"
   echo "  -i, --kind-config-file [path]   don't use the default kind.yaml config file,"
@@ -285,14 +287,25 @@ start () {
   create_app_catalog_cr
 }
 
-build_chart () {
+validate_chart () {
   chart_name=$1
 
   if [[ ! -d ${HOME}/.helm ]]; then
     helm init -c
   fi
+
   info "Validating chart \"${chart_name}\" with architect"
   docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} helm template --validate --dir helm/${chart_name}
+
+  if [[ ! -z $LINT_CHART ]]; then
+    info "Linting chart \"${chart_name}\" with \"ct\""
+    docker run -it --rm -v `pwd`:/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG} sh -c 'helm init -c && ct lint --validate-maintainers=false --charts="helm/giantswarm-todo-app"'
+  fi
+}
+
+build_chart () {
+  chart_name=$1
+
   info "Packaging chart \"${chart_name}\" with helm"
   chart_log=$(helm package helm/$chart_name)
   echo $chart_log
@@ -399,6 +412,7 @@ run_tests_for_single_config () {
   chart_name=$1
   config_file=$2
 
+  validate_chart ${chart_name}
   create_cluster
   start
   build_chart ${chart_name}
@@ -444,6 +458,10 @@ parse_args () {
       -p|--pre-script-path)
         OVERRIDEN_PRE_SCRIPT_PATH=$2
         shift 2
+        ;;
+      -l|--lint)
+        LINT_CHART=1
+        shift 1
         ;;
       *) 
         print_help
