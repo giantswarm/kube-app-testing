@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.2.2
+KAT_VERSION=0.2.3
 
 # config
 CONFIG_DIR=/tmp/kind_test
@@ -197,7 +197,8 @@ print_help () {
   echo ""
   echo "Options:"
   echo "  -h, --help                      display this help screen"
-  echo "  -l, --lint                      lint the chart using 'chart-testing'"
+  echo "  -v, --validate                  validate and lint the chart using 'chart-testing'"
+  echo "                                  (runs tests that don't require any cluster)."
   echo "  -k, --keep-after-test           after first test is successful, abort and keep"
   echo "                                  the test cluster running"
   echo "  -i, --kind-config-file [path]   don't use the default kind.yaml config file,"
@@ -301,9 +302,12 @@ validate_chart () {
   info "Validating chart \"${chart_name}\" with architect"
   docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} helm template --validate --dir helm/${chart_name}
 
-  if [[ ! -z $LINT_CHART ]]; then
-    info "Linting chart \"${chart_name}\" with \"ct\""
-    docker run -it --rm -v `pwd`:/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG} sh -c "helm init -c && ct lint --validate-maintainers=false --charts=\"helm/${chart_name}\""
+  info "Linting chart \"${chart_name}\" with \"ct\""
+  docker run -it --rm -v `pwd`:/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG} sh -c "helm init -c && ct lint --validate-maintainers=false --charts=\"helm/${chart_name}\""
+
+  if [[ $VALIDATE_ONLY -eq 1 ]]; then
+    info "Only validation was requested, exiting."
+    exit 0
   fi
 }
 
@@ -469,8 +473,8 @@ parse_args () {
         OVERRIDEN_PRE_SCRIPT_PATH=$2
         shift 2
         ;;
-      -l|--lint)
-        LINT_CHART=1
+      -v|--validate)
+        VALIDATE_ONLY=1
         shift 1
         ;;
       *) 
@@ -479,6 +483,11 @@ parse_args () {
         ;;
     esac
   done
+
+  if [[ -z $CHART_NAME ]]; then
+    err "chart name must be given with '-c' option"
+    exit 3
+  fi
 
   if [[ ! -d "helm/${CHART_NAME}" ]]; then
     err "The 'helm/' directory doesn't contain chart named '${CHART_NAME}'."
