@@ -22,7 +22,7 @@ A single test cycle works as below:
 
 1. If there's an old test cluster, it is deleted.
 1. Chart is validated and source files are templated using [`architect`](https://github.com/giantswarm/architect)
-    1. If `-l` option is given, linting is run using [chart-testing](https://github.com/helm/chart-testing)
+1. Linting is run using [chart-testing](https://github.com/helm/chart-testing).
 1. Chart is built using `helm`
 1. The following loop is run for every test config file present in `helm/[app]/ci/*yaml`. If there
    are no config files, the loop is started just once, without any config.
