@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.2.3
+KAT_VERSION=0.3.1
 
 # config
 CONFIG_DIR=/tmp/kind_test
@@ -20,6 +20,7 @@ CHART_DEPLOY_NAMESPACE=default
 MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC=60
 TEST_CONFIG_FILES_SUBPATH="ci/*.yaml"
 PRE_TEST_SCRIPT_PATH="ci/pre-test-hook.sh"
+DEFAULT_CLUSTER_TYPE=kind
 
 # docker image tags
 ARCHITECT_VERSION_TAG=latest
@@ -188,41 +189,6 @@ err () {
   log "ERROR" "$@"
 }
 
-print_help () {
-  echo "KAT v${KAT_VERSION} - KinD Application Testing"
-  echo ""
-  echo "Usage:"
-  echo ""
-  echo "  ${0##*/} [OPTION...] -c [chart name in helm/ dir]"
-  echo ""
-  echo "Options:"
-  echo "  -h, --help                      display this help screen"
-  echo "  -v, --validate                  validate and lint the chart using 'chart-testing'"
-  echo "                                  (runs tests that don't require any cluster)."
-  echo "  -k, --keep-after-test           after first test is successful, abort and keep"
-  echo "                                  the test cluster running"
-  echo "  -i, --kind-config-file [path]   don't use the default kind.yaml config file,"
-  echo "                                  but provide your own"
-  echo "  -p, --pre-script-file [path]    override the default path to look for the"
-  echo "                                  pre-test hook script file"
-  echo ""
-  echo "Requirements: kind, helm, curl."
-  echo ""
-  echo "This script builds and tests a helm chart using a kind cluster. The only required"
-  echo "parameter is [chart name], which needs to be a name of the chart and also a directory"
-  echo "name in the \"helm/\" directory. If there are YAML files present in the directory"
-  echo "helm/[chart name]/ci\", a full test starting with creation of a new clean cluster"
-  echo "will be executed for each one of them". 
-  echo "If there's a file \"helm/[chart name]/si/pre-test-hook.sh\", it will be executed after"
-  echo "the cluster is ready to deploy the tested application, but before the application"
-  echo "is deployed. KUBECONFIG variable is set to the test cluster for the script execution."
-  echo "In the next step the chart is built, pushed to the chart repository in the cluster"
-  echo "and the App CR is created to deploy the application."
-  echo "The last (and optional) step is to execute functional test. If the directory"
-  echo "\"test/kind\" is present in the top level directory, the command \"pipenv run pytest\""
-  echo "is executed as the last step."
-}
-
 ##################
 # functions
 ##################
@@ -263,7 +229,7 @@ delete_cluster () {
   kind delete cluster --name ${CLUSTER_NAME}
 }
 
-start () {
+start_tools () {
   kubeconfig=$(cat ${KUBECONFIG})
   # create tools namespace
   kubectl create ns $TOOLS_NAMESPACE
@@ -428,7 +394,7 @@ run_tests_for_single_config () {
   config_file=$2
 
   create_cluster
-  start
+  start_tools
   upload_chart ${chart_name}
   run_pre_test_hook ${chart_name}
   create_app ${chart_name} $config_file
@@ -446,6 +412,43 @@ run_tests_for_single_config () {
     extra=" and config file \"$config_file\""
   fi
   info "Test successful for chart \"${chart_name}\"${extra}"
+}
+
+print_help () {
+  echo "KAT v${KAT_VERSION} - Kubernetes Application Testing"
+  echo ""
+  echo "Usage:"
+  echo ""
+  echo "  ${0##*/} [OPTION...] -c [chart name in helm/ dir]"
+  echo ""
+  echo "Options:"
+  echo "  -h, --help                      display this help screen"
+  echo "  -v, --validate-only             only validate and lint the chart using 'chart-testing'"
+  echo "                                  (runs tests that don't require any cluster)."
+  echo "  -k, --keep-after-test           after first test is successful, abort and keep"
+  echo "                                  the test cluster running"
+  echo "  -i, --kind-config-file [path]   don't use the default kind.yaml config file,"
+  echo "                                  but provide your own"
+  echo "  -p, --pre-script-file [path]    override the default path to look for the"
+  echo "                                  pre-test hook script file"
+  echo "  -t, --cluster-type              type of cluster to use for testing"
+  echo "                                  available types: kind"
+  echo ""
+  echo "Requirements: kind, helm, curl."
+  echo ""
+  echo "This script builds and tests a helm chart using a kind cluster. The only required"
+  echo "parameter is [chart name], which needs to be a name of the chart and also a directory"
+  echo "name in the \"helm/\" directory. If there are YAML files present in the directory"
+  echo "helm/[chart name]/ci\", a full test starting with creation of a new clean cluster"
+  echo "will be executed for each one of them". 
+  echo "If there's a file \"helm/[chart name]/si/pre-test-hook.sh\", it will be executed after"
+  echo "the cluster is ready to deploy the tested application, but before the application"
+  echo "is deployed. KUBECONFIG variable is set to the test cluster for the script execution."
+  echo "In the next step the chart is built, pushed to the chart repository in the cluster"
+  echo "and the App CR is created to deploy the application."
+  echo "The last (and optional) step is to execute functional test. If the directory"
+  echo "\"test/kind\" is present in the top level directory, the command \"pipenv run pytest\""
+  echo "is executed as the last step."
 }
 
 parse_args () {
@@ -473,9 +476,13 @@ parse_args () {
         OVERRIDEN_PRE_SCRIPT_PATH=$2
         shift 2
         ;;
-      -v|--validate)
+      -v|--validate-only)
         VALIDATE_ONLY=1
         shift 1
+        ;;
+      -t|--cluster-type)
+        CLUSTER_TYPE=$2
+        shift 2
         ;;
       *) 
         print_help
@@ -483,6 +490,8 @@ parse_args () {
         ;;
     esac
   done
+
+  CLUSTER_TYPE=${CLUSTER_TYPE:-$DEFAULT_CLUSTER_TYPE}
 
   if [[ -z $CHART_NAME ]]; then
     err "chart name must be given with '-c' option"
@@ -494,9 +503,14 @@ parse_args () {
     exit 3
   fi
 
-  if [[ ! -z $KIND_CONFIG_FILE && ! -f $KIND_CONFIG_FILE ]]; then
-    err "KinD config file '$KIND_CONFIG_FILE' was specified, but doesn't exist."
-    exit 3 
+  if [[ "$CLUSTER_TYPE" == "kind" ]]; then
+    if [[ ! -z $KIND_CONFIG_FILE && ! -f $KIND_CONFIG_FILE ]]; then
+      err "KinD config file '$KIND_CONFIG_FILE' was specified, but doesn't exist."
+      exit 3 
+    fi
+  else
+    err "Only clusters of types: [kind] are supported now"
+    exit 3
   fi
 }
 
@@ -518,10 +532,9 @@ validate_tools () {
   set -e
 }
 
-main () {
+test_main () {
   chart_name=$1
 
-  delete_cluster
   set +e
   ls helm/${chart_name}/${TEST_CONFIG_FILES_SUBPATH} 1>/dev/null 2>&1
   out=$?
@@ -542,4 +555,4 @@ info "kubernetes-app-testing v${KAT_VERSION}"
 validate_tools
 validate_chart ${CHART_NAME}
 build_chart ${CHART_NAME}
-main ${CHART_NAME}
+test_main ${CHART_NAME}
