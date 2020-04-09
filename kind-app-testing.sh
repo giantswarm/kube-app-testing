@@ -205,7 +205,7 @@ wait_for_resource () {
   info "Resource ${resource} present."
 }
 
-create_cluster () {
+create_kind_cluster () {
   if [[ ! -d ${CONFIG_DIR} ]]; then
     mkdir ${CONFIG_DIR}
   fi
@@ -222,20 +222,10 @@ create_cluster () {
   kind get kubeconfig --name ${CLUSTER_NAME} --internal > ${KUBECONFIG}
   info "Cluster created, waiting for basic services to come up"
   kubectl -n kube-system rollout status deployment coredns
-}
 
-delete_cluster () {
-  info "Deleting cluster ${CLUSTER_NAME}"
-  kind delete cluster --name ${CLUSTER_NAME}
-}
-
-start_tools () {
   kubeconfig=$(cat ${KUBECONFIG})
   # create tools namespace
   kubectl create ns $TOOLS_NAMESPACE
-  # start chart-museum
-  info "Deploying \"chart-museum\""
-  chart_museum_deploy
   # start app+chart-operators
   info "Deploying \"app-operator\""
   kubectl -n ${TOOLS_NAMESPACE} create serviceaccount appcatalog
@@ -243,8 +233,47 @@ start_tools () {
   kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --service.kubernetes.incluster="false"
   info "Deploying \"chart-operator\""
   kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="false"
-  info "Waiting for services to come up"
+  info "Waiting for app-operator to come up"
   kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pod/app-operator
+}
+
+delete_kind_cluster () {
+  info "Deleting KinD cluster ${CLUSTER_NAME}"
+  kind delete cluster --name ${CLUSTER_NAME}
+}
+
+create_cluster () {
+  cluster_type=$1
+
+  case $cluster_type in
+    "kind") 
+      create_kind_cluster
+      ;;
+    *)
+      err "Cluster of type \"$cluster_type\" is not supported"
+      exit 4
+      ;;
+  esac
+}
+
+delete_cluster () {
+  cluster_type=$1
+
+  case $cluster_type in
+    "kind") 
+      delete_kind_cluster
+      ;;
+    *)
+      err "Cluster of type \"$cluster_type\" is not supported"
+      exit 4
+      ;;
+  esac
+}
+
+start_tools () {
+  info "Deploying \"chart-museum\""
+  chart_museum_deploy
+  info "Waiting for chart-operator to come up"
   kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pod/chart-operator
   info "Waiting for AppCatalog/App/Chart CRDs to be registered with API server"
   wait_for_resource ${TOOLS_NAMESPACE} crd/appcatalogs.application.giantswarm.io
@@ -393,7 +422,7 @@ run_tests_for_single_config () {
   chart_name=$1
   config_file=$2
 
-  create_cluster
+  create_cluster $CLUSTER_TYPE
   start_tools
   upload_chart ${chart_name}
   run_pre_test_hook ${chart_name}
@@ -404,7 +433,7 @@ run_tests_for_single_config () {
     warn "--keep-after-test was used, I'm stopping next test config files runs (if any) to let you investigate the cluster"
     exit 0
   else
-    delete_cluster
+    delete_cluster $CLUSTER_TYPE
   fi
 
   extra=""
