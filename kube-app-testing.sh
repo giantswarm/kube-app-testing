@@ -9,10 +9,11 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.3.1
+KAT_VERSION=0.3.2
 
 # config
-CONFIG_DIR=/tmp/kind_test
+CONFIG_DIR=/tmp/kat_test
+TMP_DIR=/tmp/kat
 export KUBECONFIG=${CONFIG_DIR}/kubei.config
 CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
@@ -21,6 +22,7 @@ MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC=60
 TEST_CONFIG_FILES_SUBPATH="ci/*.yaml"
 PRE_TEST_SCRIPT_PATH="ci/pre-test-hook.sh"
 DEFAULT_CLUSTER_TYPE=kind
+PYTHON_TESTS_DIR="test/kat"
 
 # docker image tags
 ARCHITECT_VERSION_TAG=latest
@@ -366,8 +368,8 @@ run_pytest () {
   chart_name=$1
   config_file=$2
 
-  if [[ ! -d "test/kind" ]]; then
-    info "No pytest tests found in 'test/kind', skipping"
+  if [[ ! -d "$PYTHON_TESTS_DIR" ]]; then
+    info "No pytest tests found in \"$PYTHON_TESTS_DIR\", skipping"
     return
   fi
 
@@ -378,21 +380,21 @@ run_pytest () {
   test_res_file="test-results/${test_res_file}.xml"
 
   for dir in ".local" ".cache"; do
-    if [[ -d /tmp/kat/${dir} ]]; then
-      mkdir -p /tmp/kat/${dir}
+    if [[ -d ${TMP_DIR}/${dir} ]]; then
+      mkdir -p ${TMP_DIR}/${dir}
     fi
   done
 
   info "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
   pipenv_cmd='PATH=$HOME/.local/bin:$PATH pipenv sync && PATH=$HOME/.local/bin:$PATH pipenv run pytest'
   docker run -it --rm \
-    -v /tmp/kat/.local:/root/.local \
-    -v /tmp/kat/.cache:/root/.cache \
+    -v ${TMP_DIR}/.local:/root/.local \
+    -v ${TMP_DIR}/.cache:/root/.cache \
     -v `pwd`:/chart -w /chart \
-    -v /tmp/kind_test/kubei.config:/kube.config:ro \
+    -v ${CONFIG_DIR}/kubei.config:/kube.config:ro \
     python:${PYTHON_VERSION_TAG} sh \
     -c "pip install --user pipenv \
-    && cd test/kind \
+    && cd ${PYTHON_TESTS_DIR} \
     && $pipenv_cmd \
       --kube-config /kube.config \
       --chart-name ${chart_name} \
@@ -444,7 +446,7 @@ run_tests_for_single_config () {
 }
 
 print_help () {
-  echo "KAT v${KAT_VERSION} - Kubernetes Application Testing"
+  echo "KAT v${KAT_VERSION} - Kube App Testing"
   echo ""
   echo "Usage:"
   echo ""
@@ -465,7 +467,7 @@ print_help () {
   echo ""
   echo "Requirements: kind, helm, curl."
   echo ""
-  echo "This script builds and tests a helm chart using a kind cluster. The only required"
+  echo "This script builds and tests a helm chart using a dedicated cluster. The only required"
   echo "parameter is [chart name], which needs to be a name of the chart and also a directory"
   echo "name in the \"helm/\" directory. If there are YAML files present in the directory"
   echo "helm/[chart name]/ci\", a full test starting with creation of a new clean cluster"
@@ -476,7 +478,7 @@ print_help () {
   echo "In the next step the chart is built, pushed to the chart repository in the cluster"
   echo "and the App CR is created to deploy the application."
   echo "The last (and optional) step is to execute functional test. If the directory"
-  echo "\"test/kind\" is present in the top level directory, the command \"pipenv run pytest\""
+  echo "\"${PYTHON_TESTS_DIR}\" is present in the top level directory, the command \"pipenv run pytest\""
   echo "is executed as the last step."
 }
 
@@ -580,7 +582,7 @@ test_main () {
 }
 
 parse_args $@
-info "kubernetes-app-testing v${KAT_VERSION}"
+info "kube-app-testing v${KAT_VERSION}"
 validate_tools
 validate_chart ${CHART_NAME}
 build_chart ${CHART_NAME}

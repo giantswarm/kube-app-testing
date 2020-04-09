@@ -1,4 +1,4 @@
-# kind-app-testing
+# kube-app-testing
 
 This script builds and tests a helm chart using a kind cluster. The only required
 parameter is `[chart name]`, which needs to be a name of the chart which is present
@@ -6,7 +6,7 @@ in directory `helm/`.
 
 ## Installation
 
-Checkout the repo and make `kind-app-testing.sh` executable and visible in your `$PATH`.
+Checkout the repo and make `kube-app-testing.sh` executable and visible in your `$PATH`.
 
 ## Usage
 
@@ -26,14 +26,15 @@ A single test cycle works as below:
 1. Chart is built using `helm`
 1. The following loop is run for every test config file present in `helm/[app]/ci/*yaml`. If there
    are no config files, the loop is started just once, without any config.
-    1. New `kind` cluster is created using an embedded kind config file. You can override
+    1. New kubernetes cluster is created. Currently, only `kind` is supported, so a new `kind` cluster
+       is started using an embedded kind config file. You can override
        the config file using command line option `-i`. When the cluster is up, `app-operator`,
        `chart-operator` and `chart-museum` are deployed.
     1. If there's a file `helm/[chart name]/si/pre-test-hook.sh`, it is executed. The
        `KUBECONFIG` variable is set to point to the test cluster for the script execution.
     1. Chart is pushed to the `chart-musuem` repository in the cluster.
     1. The App CR is created to deploy the application.
-    1. If the directory `test/kind` exists at the top level of repository, python tests are
+    1. If the directory `test/kat` exists at the top level of repository, python tests are
        started by executing the command:
 
        ```bash
@@ -73,11 +74,11 @@ python tests, follow this steps:
    pip install pipenv
    ```
 
-2. Go to your application repo, create the directory `test/kind` and `cd` to it
+2. Go to your application repo, create the directory `test/kat` and `cd` to it
 
    ```bash
-   mkdir test/kind
-   cd test/kind
+   mkdir test/kat
+   cd test/kat
    ```
 
 3. Run  to create a `pipenv` managed project.
@@ -95,7 +96,7 @@ python tests, follow this steps:
    Commit `Pipfile` and `Pipfile.lock` files.
 
 5. Write your tests. To get started faster, you might want to include this
-   [`conftest.py`](https://github.com/giantswarm/giantswarm-todo-app/blob/master/test/kind/conftest.py)
+   [`conftest.py`](https://github.com/giantswarm/giantswarm-todo-app/blob/master/test/kat/conftest.py)
    file to get fixtures offering you the tested chart name and the path and values loaded
    from `helm/[app]/ci*.yaml` file used for this test run.
 
