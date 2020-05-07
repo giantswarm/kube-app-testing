@@ -429,8 +429,11 @@ create_cluster () {
   cluster_type=$1
 
   case $cluster_type in
-    "kind") 
+    "kind")
       create_kind_cluster
+      ;;
+    "giantswarm")
+      create_gs_cluster
       ;;
     *)
       err "Cluster of type \"$cluster_type\" is not supported"
@@ -443,8 +446,11 @@ delete_cluster () {
   cluster_type=$1
 
   case $cluster_type in
-    "kind") 
+    "kind")
       delete_kind_cluster
+      ;;
+    "giantswarm")
+      delete_gs_cluster
       ;;
     *)
       err "Cluster of type \"$cluster_type\" is not supported"
@@ -644,15 +650,19 @@ print_help () {
   echo "  -p, --pre-script-file [path]    override the default path to look for the"
   echo "                                  pre-test hook script file"
   echo "  -t, --cluster-type              type of cluster to use for testing"
-  echo "                                  available types: kind"
+  echo "                                  available types: kind, giantswarm"
+  echo "  -a, --auth-token                auth token for the giantswarm API (only applies to"
+  echo "                                  giantswarm cluster type)"
+  echo "  -r, --release-version           giantswarm release to use (only applies to"
+  echo "                                  giantswarm cluster type)"
   echo ""
-  echo "Requirements: kind, helm, curl."
+  echo "Requirements: kind, helm, curl, jq."
   echo ""
   echo "This script builds and tests a helm chart using a dedicated cluster. The only required"
   echo "parameter is [chart name], which needs to be a name of the chart and also a directory"
   echo "name in the \"helm/\" directory. If there are YAML files present in the directory"
   echo "helm/[chart name]/ci\", a full test starting with creation of a new clean cluster"
-  echo "will be executed for each one of them". 
+  echo "will be executed for each one of them".
   echo "If there's a file \"helm/[chart name]/si/pre-test-hook.sh\", it will be executed after"
   echo "the cluster is ready to deploy the tested application, but before the application"
   echo "is deployed. KUBECONFIG variable is set to the test cluster for the script execution."
@@ -668,15 +678,15 @@ parse_args () {
 
   while [[ $# -gt 0 ]]; do
     case $1 in
-      -h|--help) 
+      -h|--help)
         print_help
         exit 0
         ;;
-      -c|--chart) 
+      -c|--chart)
         CHART_NAME=$2
         shift 2
         ;;
-      -k|--keep-after-test) 
+      -k|--keep-after-test)
         KEEP_AFTER_TEST=1
         shift
         ;;
@@ -696,7 +706,15 @@ parse_args () {
         CLUSTER_TYPE=$2
         shift 2
         ;;
-      *) 
+      -a|--auth-token)
+        GSAPI_AUTH_TOKEN=$2
+        shift 2
+        ;;
+      -r|--release-version)
+        GS_RELEASE=$2
+        shift 2
+        ;;
+      *)
         print_help
         exit 2
         ;;
@@ -718,10 +736,17 @@ parse_args () {
   if [[ "$CLUSTER_TYPE" == "kind" ]]; then
     if [[ ! -z $KIND_CONFIG_FILE && ! -f $KIND_CONFIG_FILE ]]; then
       err "KinD config file '$KIND_CONFIG_FILE' was specified, but doesn't exist."
-      exit 3 
+      exit 3
     fi
+  elif [[ "$CLUSTER_TYPE" == "giantswarm" ]]; then
+    if [[ -z $GSAPI_AUTH_TOKEN ]]; then
+      err "Auth token for the Giant Swarm API must be provided with the '-a' option."
+      exit 3
+    fi
+
+    GS_RELEASE=${GS_RELEASE:-$DEFAULT_GS_RELEASE}
   else
-    err "Only clusters of types: [kind] are supported now"
+    err "Only clusters of types: [kind, giantswarm] are supported now"
     exit 3
   fi
 }
@@ -729,7 +754,7 @@ parse_args () {
 validate_tools () {
   info "Cheking for necessary tools being installed"
   set +e
-  for app in "kind" "helm" "curl"; do
+  for app in "kind" "helm" "curl" "jq"; do
     which $app 1>/dev/null 2>&1
     exit_code=$?
     if [[ $exit_code -gt 0 ]]; then
