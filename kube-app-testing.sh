@@ -24,6 +24,13 @@ PRE_TEST_SCRIPT_PATH="ci/pre-test-hook.sh"
 DEFAULT_CLUSTER_TYPE=kind
 PYTHON_TESTS_DIR="test/kat"
 
+# gs cluster config
+DEFAULT_GS_RELEASE="11.2.1"
+GS_API_URI="https://api.g8s.gauss.eu-central-1.aws.gigantic.io"
+AVAILABILITY_ZONE="eu-central-1a"
+SCALING_MIN=1
+SCALING_MAX=2
+
 # docker image tags
 ARCHITECT_VERSION_TAG=latest
 APP_OPERATOR_VERSION_TAG=latest
@@ -199,7 +206,7 @@ wait_for_resource () {
   namespace=$1
   resource=$2
 
-  while true; do 
+  while true; do
     kubectl -n $namespace get --no-headers $resource 1>/dev/null 2>&1 && break
     info "Waiting for resource ${resource} to be present in cluster..."
     sleep 1
