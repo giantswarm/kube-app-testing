@@ -317,6 +317,114 @@ EOF
   fi
 }
 
+create_gs_cluster () {
+  # create a new cluster
+  curl ${GS_API_URI}/v5/clusters/ -X POST \
+    -H "Content-Type: application/json" \
+    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
+    -d "$(gen_gs_data cluster)"
+
+  if [[ "$?" -gt 0 ]]; then
+    err "Cluster creation failed."
+    exit 3
+  fi
+
+  # get the list of clusters
+  _cluster_list=$(curl -s ${GS_API_URI}/v4/clusters/ -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}")
+  # base64 encode the name to work around spaces
+  _base64_cluster_name=$(echo ${CLUSTER_NAME} | base64)
+
+  # we have to pass cluster dictionaries around as base64 encoded objects
+  # to avoid issues with whitespace characters.
+  for cluster in $(echo "${_cluster_list}" | jq -r '.[] | @base64'); do
+    unset _this_cluster
+
+    _jq() {
+      echo ${cluster} | base64 --decode | jq -r ${1}
+    }
+
+    _this_cluster=$(echo $(_jq '.name') | base64)
+
+    if [[ "$_base64_cluster_name" == "$_this_cluster" ]]; then
+      CLUSTER_ID=$(echo $(_jq '.id'))
+      break
+    fi
+  done
+
+  if [[ -z $CLUSTER_ID ]]; then
+    err "Cluster name matching '${CLUSTER_NAME}' could not be found."
+    exit 3
+  fi
+
+  # create a nodepool
+  curl ${GS_API_URI}/v5/clusters/${CLUSTER_ID}/nodepools/ -X POST \
+    -H "Content-Type: application/json" \
+    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
+    -d "$(gen_gs_data nodepool)"
+
+  if [[ "$?" -gt 0 ]]; then
+    err "Nodepool creation failed."
+    exit 3
+  fi
+
+  # wait for the cluster to be ready
+  # declare a counter
+  _counter=0
+  until [ `curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URI}/v5/clusters/${CLUSTER_ID}/ | jq .conditions | grep -i "created" | wc -l` -gt 0 ]; do
+    # exit if the cluster hasn't been created in 30 minutes
+    if [[ "$_counter" -gt 60 ]]; then
+      err "Cluster not created after 30 minutes."
+      exit 3
+    fi
+
+    # increment the counter
+    ((_counter++))
+    echo "Waiting for cluster to be created."
+    sleep 30
+  done
+
+  # create a key pair
+  _key_pair=$(curl ${GS_API_URI}/v4/clusters/${CLUSTER_ID}/key-pairs/ -X POST \
+    -H "Content-Type: application/json" \
+    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
+    -d "$(gen_gs_data keypair)")
+
+  # check that we actually got a key pair back
+  grep "certificate_authority_data" <<< $_key_pair
+  if [[ "$?" -gt 0 ]]; then
+    err "Key pair creation failed."
+    exit 3
+  fi
+
+  # store what we need to create the kubeconfig
+  TC_API_URI=$(curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URI}/v5/clusters/smw6r/ | jq -r .api_endpoint)
+  CA_CERT=$(echo $_key_pair | jq -r '.certificate_authority_data | @base64')
+  CLIENT_CERT=$(echo $_key_pair | jq -r '.client_certificate_data | @base64')
+  CLIENT_KEY=$(echo $_key_pair | jq -r '.client_key_data | @base64')
+
+  # create the kubeconfig
+  gen_gs_data kubeconfig $(echo ${CONFIG_DIR}/kubeconfig)
+  kubeconfig=$(echo ${CONFIG_DIR}/kubeconfig)
+
+  # test connectivity
+  kubectl get pods -n kube-system --kubeconfig $kubeconfig
+  if [[ "$?" -gt 0 ]]; then
+    err "Could not list pods in the kube-system namespace."
+    exit 3
+  fi
+}
+
+delete_gs_cluster () {
+  info "Deleting Giant Swarm tenant cluster ${CLUSTER_ID}"
+  curl ${GS_API_URI}/v4/clusters/${CLUSTER_ID}/ -X DELETE \
+    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}"
+
+  if [[ "$?" -gt 0 ]]; then
+    err "Cluster deletion failed - please investigate."
+    exit 3
+  fi
+}
+
 create_cluster () {
   cluster_type=$1
 
