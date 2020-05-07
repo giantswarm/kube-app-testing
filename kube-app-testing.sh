@@ -251,6 +251,72 @@ delete_kind_cluster () {
   kind delete cluster --name ${CLUSTER_NAME}
 }
 
+gen_gs_data () {
+  # one function to generate different JSON blobs
+
+  # payload for creating a cluster
+  if [[ "$1" == "cluster" ]]; then
+  cat <<EOF
+{
+	"owner": "giantswarm",
+	"release_version": "${GS_RELEASE}",
+	"name": "${CLUSTER_NAME}",
+	"master": {
+		"availability_zone": "${AVAILABILITY_ZONE}"
+	}
+}
+EOF
+}
+  # payload for creating a nodepool
+  elif [[ "$1" == "nodepool" ]]; then
+  cat <<EOF
+{
+  "name": "${CLUSTER_NAME}",
+  "availability_zones": {
+    "number": 1
+  },
+  "scaling": {
+    "min": ${SCALING_MIN},
+    "max": ${SCALING_MAX}
+  }
+}
+EOF
+  # payload for creating a client key pair
+  elif [[ "$1" == "keypair" ]]; then
+  cat <<EOF
+{
+  "description": "CI-generated key pair",
+  "ttl_hours": 6,
+  "certificate_organizations": "system:masters"
+}
+EOF
+  # template a kubeconfig based on the created key pair.
+  # expects a file path as the second argument
+  elif [[ "$1" == "kubeconfig" ]]; then
+  cat > $2 << EOF
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: "${}"
+    server: "${}"
+  name: giantswarm-${CLUSTER_ID}
+contexts:
+- context:
+    cluster: giantswarm-${CLUSTER_ID}
+    user: giantswarm-${CLUSTER_ID}-user
+  name: giantswarm-${CLUSTER_ID}
+current-context: giantswarm-${CLUSTER_ID}
+kind: Config
+preferences: {}
+users:
+- name: giantswarm-${CLUSTER_ID}-user
+  user:
+    client-certificate-data: "${}"
+    client-key-data: "${}"
+EOF
+  fi
+}
+
 create_cluster () {
   cluster_type=$1
 
