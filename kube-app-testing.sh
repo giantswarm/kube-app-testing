@@ -397,7 +397,7 @@ create_gs_cluster () {
   fi
 
   # store what we need to create the kubeconfig
-  TC_API_URI=$(curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URI}/v5/clusters/smw6r/ | jq -r .api_endpoint)
+  TC_API_URI=$(curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URI}/v5/clusters/${CLUSTER_ID}/ | jq -r .api_endpoint)
   CA_CERT=$(echo $_key_pair | jq -r '.certificate_authority_data | @base64')
   CLIENT_CERT=$(echo $_key_pair | jq -r '.client_certificate_data | @base64')
   CLIENT_KEY=$(echo $_key_pair | jq -r '.client_key_data | @base64')
