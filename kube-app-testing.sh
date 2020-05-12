@@ -772,7 +772,7 @@ parse_args () {
 }
 
 validate_tools () {
-  info "Cheking for necessary tools being installed"
+  info "Checking for necessary tools being installed"
   set +e
   for app in "kind" "helm" "curl" "jq"; do
     which $app 1>/dev/null 2>&1
