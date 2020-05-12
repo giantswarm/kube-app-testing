@@ -396,7 +396,7 @@ create_gs_cluster () {
     -d "$(gen_gs_blob keypair)")
 
   # check that we actually got a key pair back
-  grep "certificate_authority_data" <<< $_key_pair
+  grep -q "certificate_authority_data" <<< $_key_pair
   if [[ "$?" -gt 0 ]]; then
     err "Key pair creation failed."
     exit 3
