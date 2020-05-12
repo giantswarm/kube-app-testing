@@ -316,6 +316,7 @@ EOF
 }
 
 create_gs_cluster () {
+  set -x
   info "Creating new tenant cluster."
 
   # create a new cluster
@@ -428,6 +429,7 @@ create_gs_cluster () {
     err "Could not list pods in the kube-system namespace."
     exit 3
   fi
+  set +x
 }
 
 delete_gs_cluster () {
