@@ -387,7 +387,8 @@ create_gs_cluster () {
     fi
 
     # increment the counter
-    ((_counter++))
+    _counter=$((_counter+1))
+    #((_counter++))
     info "Waiting for cluster ${CLUSTER_ID} to be ready."
     sleep 30
   done
