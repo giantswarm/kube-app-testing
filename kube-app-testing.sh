@@ -265,7 +265,6 @@ gen_gs_blob () {
 	}
 }
 EOF
-}
   # payload for creating a nodepool
   elif [[ "$1" == "nodepool" ]]; then
   cat <<EOF
