@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.3.2
+KAT_VERSION=0.3.3
 
 # config
 CONFIG_DIR=/tmp/kat_test
@@ -472,6 +472,7 @@ print_help () {
   echo "                                  pre-test hook script file"
   echo "  -t, --cluster-type              type of cluster to use for testing"
   echo "                                  available types: kind"
+  echo "  -n, --namespace                 namespace to deploy the tested app to"
   echo ""
   echo "Requirements: kind, helm, curl."
   echo ""
@@ -521,6 +522,10 @@ parse_args () {
         ;;
       -t|--cluster-type)
         CLUSTER_TYPE=$2
+        shift 2
+        ;;
+      -n|--namespace)
+        CHART_DEPLOY_NAMESPACE=$2
         shift 2
         ;;
       *) 
