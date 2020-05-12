@@ -300,14 +300,12 @@ validate_chart () {
   docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} helm template --validate --dir helm/${chart_name}
 
   info "Linting chart \"${chart_name}\" with \"ct\""
+  CT_DOCKER_RUN="docker run -it --rm -v $(pwd):/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG}"
   if [[ -n "${CT_CONFIG_FILE}" ]]
   then
-    CONFIG_DIR=$(dirname ${CT_CONFIG_FILE})
-    CONFIG_FILE=$(basename ${CT_CONFIG_FILE})
-    docker run -it --rm -v $CONFIG_DIR:/config_dir -v `pwd`:/chart -w /chart \
-      quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG} sh -c "helm init -c && ct lint --config /config_dir/$CONFIG_FILE --validate-maintainers=false --charts=\"helm/${chart_name}\""
+    $CT_DOCKER_RUN sh -c "helm init -c && ct lint --config $CT_CONFIG_FILE --validate-maintainers=false --charts=\"helm/${chart_name}\""
   else
-    docker run -it --rm -v `pwd`:/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG} sh -c "helm init -c && ct lint --validate-maintainers=false --charts=\"helm/${chart_name}\""
+    $CT_DOCKER_RUN sh -c "helm init -c && ct lint --validate-maintainers=false --charts=\"helm/${chart_name}\""
   fi
 
   if [[ $VALIDATE_ONLY -eq 1 ]]; then
