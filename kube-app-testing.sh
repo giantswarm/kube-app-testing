@@ -333,6 +333,10 @@ create_gs_cluster () {
   # base64 encode the name to work around spaces
   _base64_cluster_name=$(echo ${CLUSTER_NAME} | base64)
 
+  # loop over the list of clusters to find the ID of our newly-created
+  # cluster. this is a little fragile as we could potentially retrieve
+  # the ID of another cluster if it has the same name.
+  #
   # we have to pass cluster dictionaries around as base64 encoded objects
   # to avoid issues with whitespace characters.
   for cluster in $(echo "${_cluster_list}" | jq -r '.[] | @base64'); do
@@ -382,7 +386,7 @@ create_gs_cluster () {
     sleep 30
   done
 
-  # create a key pair
+  # create a key pair (must be stored directly in a variable)
   _key_pair=$(curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/key-pairs/ -X POST \
     -H "Content-Type: application/json" \
     -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
@@ -395,7 +399,8 @@ create_gs_cluster () {
     exit 3
   fi
 
-  # store what we need to create the kubeconfig
+  # parse required fields from key pair creation response in order to
+  # create a kubeconfig for the tenant cluster
   TC_API_URI=$(curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/ | jq -r .api_endpoint)
   CA_CERT=$(echo $_key_pair | jq -r '.certificate_authority_data | @base64')
   CLIENT_CERT=$(echo $_key_pair | jq -r '.client_certificate_data | @base64')
