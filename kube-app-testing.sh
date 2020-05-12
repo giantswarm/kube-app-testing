@@ -328,6 +328,9 @@ create_gs_cluster () {
     exit 3
   fi
 
+  # make sure we're not too fast for the API
+  sleep 5
+
   # get the list of clusters
   _cluster_list=$(curl -s ${GS_API_URL}/v4/clusters/ -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}")
   # base64 encode the name to work around spaces
