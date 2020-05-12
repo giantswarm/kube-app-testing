@@ -250,7 +250,7 @@ delete_kind_cluster () {
   kind delete cluster --name ${CLUSTER_NAME}
 }
 
-gen_gs_data () {
+gen_gs_blob () {
   # one function to generate different JSON blobs
 
   # payload for creating a cluster
@@ -321,7 +321,7 @@ create_gs_cluster () {
   curl ${GS_API_URL}/v5/clusters/ -X POST \
     -H "Content-Type: application/json" \
     -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-    -d "$(gen_gs_data cluster)"
+    -d "$(gen_gs_blob cluster)"
 
   if [[ "$?" -gt 0 ]]; then
     err "Cluster creation failed."
@@ -359,7 +359,7 @@ create_gs_cluster () {
   curl ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/nodepools/ -X POST \
     -H "Content-Type: application/json" \
     -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-    -d "$(gen_gs_data nodepool)"
+    -d "$(gen_gs_blob nodepool)"
 
   if [[ "$?" -gt 0 ]]; then
     err "Nodepool creation failed."
@@ -386,7 +386,7 @@ create_gs_cluster () {
   _key_pair=$(curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/key-pairs/ -X POST \
     -H "Content-Type: application/json" \
     -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-    -d "$(gen_gs_data keypair)")
+    -d "$(gen_gs_blob keypair)")
 
   # check that we actually got a key pair back
   grep "certificate_authority_data" <<< $_key_pair
@@ -402,7 +402,7 @@ create_gs_cluster () {
   CLIENT_KEY=$(echo $_key_pair | jq -r '.client_key_data | @base64')
 
   # create the kubeconfig
-  gen_gs_data kubeconfig $(echo ${CONFIG_DIR}/kubeconfig)
+  gen_gs_blob kubeconfig $(echo ${CONFIG_DIR}/kubeconfig)
   kubeconfig=$(echo ${CONFIG_DIR}/kubeconfig)
 
   # test connectivity
