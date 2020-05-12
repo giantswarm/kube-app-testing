@@ -15,7 +15,7 @@ KAT_VERSION=0.3.2
 CONFIG_DIR=/tmp/kat_test
 TMP_DIR=/tmp/kat
 export KUBECONFIG=${CONFIG_DIR}/kubei.config
-CLUSTER_NAME=kt
+DEFAULT_CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
 CHART_DEPLOY_NAMESPACE=default
 MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC=60
@@ -706,6 +706,10 @@ parse_args () {
         CLUSTER_TYPE=$2
         shift 2
         ;;
+      -n|--cluster-name)
+        CLUSTER_TYPE=$2
+        shift 2
+        ;;
       -a|--auth-token)
         GSAPI_AUTH_TOKEN=$2
         shift 2
@@ -722,6 +726,7 @@ parse_args () {
   done
 
   CLUSTER_TYPE=${CLUSTER_TYPE:-$DEFAULT_CLUSTER_TYPE}
+  CLUSTER_NAME=${CLUSTER_NAME:-$DEFAULT_CLUSTER_NAME}
 
   if [[ -z $CHART_NAME ]]; then
     err "chart name must be given with '-c' option"
