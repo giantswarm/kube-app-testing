@@ -25,9 +25,8 @@ DEFAULT_CLUSTER_TYPE=kind
 PYTHON_TESTS_DIR="test/kat"
 
 # gs cluster config
-DEFAULT_GS_RELEASE="11.2.1"
-GS_API_URI="https://api.g8s.gauss.eu-central-1.aws.gigantic.io"
-AVAILABILITY_ZONE="eu-central-1a"
+DEFAULT_GS_API_URL="https://api.g8s.gauss.eu-central-1.aws.gigantic.io"
+DEFAULT_AVAILABILITY_ZONE="eu-central-1a"
 SCALING_MIN=1
 SCALING_MAX=2
 
@@ -718,6 +717,14 @@ parse_args () {
         GS_RELEASE=$2
         shift 2
         ;;
+      --availability-zone)
+        AVAILABILITY_ZONE=$2
+        shift 2
+        ;;
+      --giantswarm-api-url)
+        GS_API_URL=$2
+        shift 2
+        ;;
       *)
         print_help
         exit 2
@@ -749,7 +756,15 @@ parse_args () {
       exit 3
     fi
 
-    GS_RELEASE=${GS_RELEASE:-$DEFAULT_GS_RELEASE}
+    if [[ -z $GS_RELEASE ]]; then
+      err "GS release version must be provided with the '-r' option."
+      exit 3
+    fi
+
+    GS_API_URL=${GS_API_URL:-$DEFAULT_GS_API_URL}
+    AVAILABILITY_ZONE=${AVAILABILITY_ZONE:-$DEFAULT_AVAILABILITY_ZONE}
+
+    info "Testing with release $GS_RELEASE against $GS_API_URL in AZ $AVAILABILITY_ZONE"
   else
     err "Only clusters of types: [kind, giantswarm] are supported now"
     exit 3
