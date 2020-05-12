@@ -317,6 +317,8 @@ EOF
 }
 
 create_gs_cluster () {
+  info "Creating new tenant cluster."
+
   # create a new cluster
   curl ${GS_API_URL}/v5/clusters/ -X POST \
     -H "Content-Type: application/json" \
@@ -362,6 +364,7 @@ create_gs_cluster () {
     exit 3
   fi
 
+  info "Creating nodepool for cluster ${CLUSTER_ID}"
   # create a nodepool
   curl ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/nodepools/ -X POST \
     -H "Content-Type: application/json" \
@@ -385,10 +388,11 @@ create_gs_cluster () {
 
     # increment the counter
     ((_counter++))
-    echo "Waiting for cluster to be created."
+    info "Waiting for cluster ${CLUSTER_ID} to be ready."
     sleep 30
   done
 
+  info "Creating key-pair for tenant cluster access."
   # create a key pair (must be stored directly in a variable)
   _key_pair=$(curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/key-pairs/ -X POST \
     -H "Content-Type: application/json" \
@@ -414,9 +418,11 @@ create_gs_cluster () {
     mkdir ${CONFIG_DIR}
   fi
 
+  info "Templating kubeconfig out to ${KUBECONFIG}"
   # create the kubeconfig
   gen_gs_blob kubeconfig ${KUBECONFIG}
 
+  info "Test tenant cluster by listing pods in 'kube-system' namespace."
   # test connectivity
   kubectl get pods -n kube-system
   if [[ "$?" -gt 0 ]]; then
