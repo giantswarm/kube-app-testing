@@ -296,8 +296,8 @@ EOF
 apiVersion: v1
 clusters:
 - cluster:
-    certificate-authority-data: "${}"
-    server: "${}"
+    certificate-authority-data: "${CA_CERT}"
+    server: "${TC_API_URI}"
   name: giantswarm-${CLUSTER_ID}
 contexts:
 - context:
@@ -310,8 +310,8 @@ preferences: {}
 users:
 - name: giantswarm-${CLUSTER_ID}-user
   user:
-    client-certificate-data: "${}"
-    client-key-data: "${}"
+    client-certificate-data: "${CLIENT_CERT}"
+    client-key-data: "${CLIENT_KEY}"
 EOF
   fi
 }
