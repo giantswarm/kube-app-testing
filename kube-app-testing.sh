@@ -406,12 +406,16 @@ create_gs_cluster () {
   CLIENT_CERT=$(echo $_key_pair | jq -r '.client_certificate_data | @base64')
   CLIENT_KEY=$(echo $_key_pair | jq -r '.client_key_data | @base64')
 
+  # align config with kind clusters
+  if [[ ! -d ${CONFIG_DIR} ]]; then
+    mkdir ${CONFIG_DIR}
+  fi
+
   # create the kubeconfig
-  gen_gs_blob kubeconfig $(echo ${CONFIG_DIR}/kubeconfig)
-  kubeconfig=$(echo ${CONFIG_DIR}/kubeconfig)
+  gen_gs_blob kubeconfig ${KUBECONFIG}
 
   # test connectivity
-  kubectl get pods -n kube-system --kubeconfig $kubeconfig
+  kubectl get pods -n kube-system
   if [[ "$?" -gt 0 ]]; then
     err "Could not list pods in the kube-system namespace."
     exit 3
