@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.3.2
+KAT_VERSION=0.3.3
 
 # config
 CONFIG_DIR=/tmp/kat_test
@@ -495,7 +495,13 @@ validate_chart () {
   docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} helm template --validate --dir helm/${chart_name}
 
   info "Linting chart \"${chart_name}\" with \"ct\""
-  docker run -it --rm -v `pwd`:/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG} sh -c "helm init -c && ct lint --validate-maintainers=false --charts=\"helm/${chart_name}\""
+  CT_DOCKER_RUN="docker run -it --rm -v $(pwd):/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG}"
+  if [[ -n "${CT_CONFIG_FILE}" ]]
+  then
+    $CT_DOCKER_RUN sh -c "helm init -c && ct lint --config $CT_CONFIG_FILE --validate-maintainers=false --charts=\"helm/${chart_name}\""
+  else
+    $CT_DOCKER_RUN sh -c "helm init -c && ct lint --validate-maintainers=false --charts=\"helm/${chart_name}\""
+  fi
 
   if [[ $VALIDATE_ONLY -eq 1 ]]; then
     info "Only validation was requested, exiting."
@@ -659,6 +665,8 @@ print_help () {
   echo "                                  pre-test hook script file"
   echo "  -t, --cluster-type              type of cluster to use for testing"
   echo "                                  available types: kind, giantswarm"
+  echo "  --cluster-name                  name of the cluster."
+  echo "  -n, --namespace                 namespace to deploy the tested app to"
   echo "  -a, --auth-token                auth token for the giantswarm API (only applies to"
   echo "                                  giantswarm cluster type)"
   echo "  -r, --release-version           giantswarm release to use (only applies to"
@@ -720,7 +728,11 @@ parse_args () {
         CLUSTER_TYPE=$2
         shift 2
         ;;
-      -n|--cluster-name)
+      -n|--namespace)
+        CHART_DEPLOY_NAMESPACE=$2
+        shift 2
+        ;;
+      --cluster-name)
         CLUSTER_TYPE=$2
         shift 2
         ;;
