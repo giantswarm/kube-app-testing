@@ -733,7 +733,7 @@ parse_args () {
         shift 2
         ;;
       --cluster-name)
-        CLUSTER_TYPE=$2
+        CLUSTER_NAME=$2
         shift 2
         ;;
       -a|--auth-token)
