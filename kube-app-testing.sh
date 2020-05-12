@@ -302,10 +302,7 @@ validate_chart () {
   info "Linting chart \"${chart_name}\" with \"ct\""
   if [[ -n "${CT_CONFIG_FILE}" ]]
   then
-    CONFIG_DIR=$(dirname ${CT_CONFIG_FILE})
-    CONFIG_FILE=$(basename ${CT_CONFIG_FILE})
-    docker run -it --rm -v $CONFIG_DIR:/config_dir -v `pwd`:/chart -w /chart \
-      quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG} sh -c "helm init -c && ct lint --config /config_dir/$CONFIG_FILE --validate-maintainers=false --charts=\"helm/${chart_name}\""
+    docker run -it --rm -v `pwd`:/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG} sh -c "helm init -c && ct lint --config $CT_CONFIG_FILE --validate-maintainers=false --charts=\"helm/${chart_name}\""
   else
     docker run -it --rm -v `pwd`:/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG} sh -c "helm init -c && ct lint --validate-maintainers=false --charts=\"helm/${chart_name}\""
   fi
