@@ -27,8 +27,8 @@ PYTHON_TESTS_DIR="test/kat"
 # gs cluster config
 DEFAULT_GS_API_URL="https://api.g8s.gauss.eu-central-1.aws.gigantic.io"
 DEFAULT_AVAILABILITY_ZONE="eu-central-1a"
-SCALING_MIN=1
-SCALING_MAX=2
+DEFAULT_SCALING_MIN=1
+DEFAULT_SCALING_MAX=2
 
 # docker image tags
 ARCHITECT_VERSION_TAG=latest
@@ -663,6 +663,8 @@ print_help () {
   echo "                                  'eu-central-1a'"
   echo "  --giantswarm-api-url            URL of the Giantswarm installation API, defaults to Gauss."
   echo "                                  e.g. 'https://api.g8s.gauss.eu-central-1.aws.gigantic.io'"
+  echo "  --min-scaling                   minimum number of nodes (applies to GS clusters only)"
+  echo "  --max-scaling                   maximum number of nodes (applies to GS clusters only)"
   echo ""
   echo "Requirements: kind, helm, curl, jq."
   echo ""
@@ -734,6 +736,14 @@ parse_args () {
         GS_API_URL=$2
         shift 2
         ;;
+      --min-scaling)
+        SCALING_MIN=$2
+        shift 2
+        ;;
+      --max-scaling)
+        SCALING_MAX=$2
+        shift 2
+        ;;
       *)
         print_help
         exit 2
@@ -777,8 +787,11 @@ parse_args () {
 
     GS_API_URL=${GS_API_URL:-$DEFAULT_GS_API_URL}
     AVAILABILITY_ZONE=${AVAILABILITY_ZONE:-$DEFAULT_AVAILABILITY_ZONE}
+    SCALING_MIN=${SCALING_MIN:-$DEFAULT_SCALING_MIN}
+    SCALING_MAX=${SCALING_MAX:-$DEFAULT_SCALING_MAX}
 
-    info "Testing with release $GS_RELEASE against $GS_API_URL in AZ $AVAILABILITY_ZONE"
+    info "Testing with release $GS_RELEASE against $GS_API_URL in AZ $AVAILABILITY_ZONE."
+    info "Cluster will scale between $SCALING_MIN and $SCALING_MAX nodes."
   else
     err "Only clusters of types: [kind, giantswarm] are supported now"
     exit 3
