@@ -9,13 +9,13 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.3.3
+KAT_VERSION=0.3.7
 
 # config
 CONFIG_DIR=/tmp/kat_test
 TMP_DIR=/tmp/kat
 ENV_DETAILS_FILE=/tmp/env-details
-export KUBECONFIG=${CONFIG_DIR}/kubei.config
+export KUBECONFIG=${CONFIG_DIR}/kube.config
 DEFAULT_CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
 CHART_DEPLOY_NAMESPACE=default
@@ -35,8 +35,8 @@ DEFAULT_SCALING_MAX=2
 
 # docker image tags
 ARCHITECT_VERSION_TAG=latest
-APP_OPERATOR_VERSION_TAG=latest
-CHART_OPERATOR_VERSION_TAG=latest
+APP_OPERATOR_VERSION_TAG=1.0.2
+CHART_OPERATOR_VERSION_TAG=0.13.0
 CHART_MUSEUM_VERSION_TAG=v0.12.0
 PYTHON_VERSION_TAG=3.7-alpine
 CHART_TESTING_VERSION_TAG=v2.4.0
@@ -184,7 +184,7 @@ EOF
 log () {
   level=$1
   shift 1
-  date --rfc-3339=seconds -u | tr -d '\n'
+  date -u +"%Y-%m-%dT%H:%M:%SZ" | tr -d '\n'
   echo " [${level}] $@"
 }
 
@@ -230,7 +230,7 @@ create_kind_cluster () {
   fi
 
   kind create cluster --name ${CLUSTER_NAME} --config ${CONFIG_DIR}/kind.yaml
-  kind get kubeconfig --name ${CLUSTER_NAME} --internal > ${KUBECONFIG}
+  kind get kubeconfig --name ${CLUSTER_NAME} > ${KUBECONFIG}
   info "Cluster created, waiting for basic services to come up"
   kubectl -n kube-system rollout status deployment coredns
 
@@ -245,9 +245,9 @@ create_kind_cluster () {
   info "Deploying \"app-operator\""
   kubectl -n ${TOOLS_NAMESPACE} create serviceaccount appcatalog
   kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=${TOOLS_NAMESPACE}:appcatalog
-  kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --service.kubernetes.incluster="false"
+  kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.incluster="true"
   info "Deploying \"chart-operator\""
-  kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="false"
+  kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="true"
   info "Waiting for app-operator to come up"
   kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pod/app-operator
 }
@@ -612,10 +612,9 @@ upload_chart () {
 create_app () {
   name=$1
   config_file=$2
-  version=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
 
-  info "Creating 'app CR' with version=${version} and name=${name}"
-  create_app_cr $name $version $config_file
+  info "Creating 'app CR' with version=${CHART_VERSION} and name=${name}"
+  create_app_cr $name $CHART_VERSION $config_file
 }
 
 verify_helm () {
@@ -674,13 +673,14 @@ run_pytest () {
     -v ${TMP_DIR}/.local:/root/.local \
     -v ${TMP_DIR}/.cache:/root/.cache \
     -v `pwd`:/chart -w /chart \
-    -v ${CONFIG_DIR}/kubei.config:/kube.config:ro \
+    -v ${KUBECONFIG}:/kube.config:ro \
     python:${PYTHON_VERSION_TAG} sh \
     -c "pip install --user pipenv \
     && cd ${PYTHON_TESTS_DIR} \
     && $pipenv_cmd \
       --kube-config /kube.config \
       --chart-name ${chart_name} \
+      --chart-version ${CHART_VERSION} \
       --values-file ../../${config_file} \
       --junitxml=../../${test_res_file}"
 }
@@ -709,6 +709,7 @@ run_tests_for_single_config () {
 
   create_cluster $CLUSTER_TYPE
   start_tools
+  CHART_VERSION=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
   upload_chart ${chart_name}
   run_pre_test_hook ${chart_name}
   create_app ${chart_name} $config_file
