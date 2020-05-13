@@ -253,6 +253,10 @@ create_kind_cluster () {
 delete_kind_cluster () {
   info "Deleting KinD cluster ${CLUSTER_NAME}"
   kind delete cluster --name ${CLUSTER_NAME}
+
+  if [[ -f ${ENV_DETAILS_FILE} ]]; then
+    rm ${ENV_DETAILS_FILE}
+  fi
 }
 
 gen_gs_blob () {
@@ -700,6 +704,11 @@ print_help () {
   echo "  -h, --help                      display this help screen"
   echo "  -v, --validate-only             only validate and lint the chart using 'chart-testing'"
   echo "                                  (runs tests that don't require any cluster)."
+  echo "  --force-cleanup                 using force cleanup allows the script to be run independently"
+  echo "                                  of the main job. This allows it to clean up any dangling resources"
+  echo "                                  left by a failure mid-job. Must be run in a CircleCI job with the"
+  echo "                                  `when: always` value set. If the cluster is a GS cluster then the"
+  echo "                                  auth token must also be provided with '-a'."
   echo "  -k, --keep-after-test           after first test is successful, abort and keep"
   echo "                                  the test cluster running"
   echo "  -i, --kind-config-file [path]   don't use the default kind.yaml config file,"
