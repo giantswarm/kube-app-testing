@@ -14,6 +14,7 @@ KAT_VERSION=0.3.3
 # config
 CONFIG_DIR=/tmp/kat_test
 TMP_DIR=/tmp/kat
+ENV_DETAILS_FILE=/tmp/env-details
 export KUBECONFIG=${CONFIG_DIR}/kubei.config
 DEFAULT_CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
@@ -231,6 +232,10 @@ create_kind_cluster () {
   info "Cluster created, waiting for basic services to come up"
   kubectl -n kube-system rollout status deployment coredns
 
+  # write cluster details to file to run a manual cleanup later if required.
+  echo "export CLUSTER_NAME=${CLUSTER_NAME}" > ${ENV_DETAILS_FILE}
+  echo "export CLUSTER_TYPE=${CLUSTER_TYPE}" >> ${ENV_DETAILS_FILE}
+
   kubeconfig=$(cat ${KUBECONFIG})
   # create tools namespace
   kubectl create ns $TOOLS_NAMESPACE
@@ -363,6 +368,11 @@ create_gs_cluster () {
     exit 3
   fi
 
+  # write cluster details to file to run a manual cleanup later if required.
+  echo "export CLUSTER_ID=${CLUSTER_ID}" > ${ENV_DETAILS_FILE}
+  echo "export CLUSTER_TYPE=${CLUSTER_TYPE}" >> ${ENV_DETAILS_FILE}
+  echo "export GS_API_URL=${GS_API_URL}" >> ${ENV_DETAILS_FILE}
+
   info "Creating nodepool for cluster ${CLUSTER_ID}"
   # create a nodepool
   curl ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/nodepools/ -X POST \
@@ -439,6 +449,10 @@ delete_gs_cluster () {
     err "Cluster deletion failed - please investigate."
     exit 3
   fi
+
+  if [[ -f ${ENV_DETAILS_FILE} ]]; then
+    rm ${ENV_DETAILS_FILE}
+  fi
 }
 
 create_cluster () {
@@ -456,6 +470,27 @@ create_cluster () {
       exit 4
       ;;
   esac
+}
+
+force_cleanup () {
+  # check if the cluster details file exists - if not then we do nothing.
+  if [[ ! -f ${ENV_DETAILS_FILE} ]]; then
+    log "No previous cluster info found at ${ENV_DETAILS_FILE}, nothing to do."
+    exit 0
+  fi
+
+  # pick up cluster details from previous run.
+  source ${ENV_DETAILS_FILE}
+
+  # the GS API token must be provided again - this is because it shouldn't be written
+  # to the filesystem at any point.
+  if [[ -z ${GSAPI_AUTH_TOKEN} ]] && [[ "${CLUSTER_TYPE}" == "giantswarm" ]]; then
+    err "Auth token must be provided to enable GS cluster teardown."
+    exit 3
+  fi
+
+  # call for cluster deletion using the existing functions.
+  delete_cluster ${CLUSTER_TYPE}
 }
 
 delete_cluster () {
@@ -767,6 +802,12 @@ parse_args () {
       --max-scaling)
         SCALING_MAX=$2
         shift 2
+        ;;
+      # `--force-cleanup` should always be last to allow flags
+      # required for cleanup to be parsed first.
+      --force-cleanup)
+        force_cleanup
+        exit 0
         ;;
       *)
         print_help
