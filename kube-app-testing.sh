@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.3.6
+KAT_VERSION=0.3.7
 
 # config
 CONFIG_DIR=/tmp/kat_test
@@ -334,10 +334,9 @@ upload_chart () {
 create_app () {
   name=$1
   config_file=$2
-  version=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
 
-  info "Creating 'app CR' with version=${version} and name=${name}"
-  create_app_cr $name $version $config_file
+  info "Creating 'app CR' with version=${CHART_VERSION} and name=${name}"
+  create_app_cr $name $CHART_VERSION $config_file
 }
 
 verify_helm () {
@@ -403,6 +402,7 @@ run_pytest () {
     && $pipenv_cmd \
       --kube-config /kube.config \
       --chart-name ${chart_name} \
+      --chart-version ${CHART_VERSION} \
       --values-file ../../${config_file} \
       --junitxml=../../${test_res_file}"
 }
@@ -431,6 +431,7 @@ run_tests_for_single_config () {
 
   create_cluster $CLUSTER_TYPE
   start_tools
+  CHART_VERSION=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
   upload_chart ${chart_name}
   run_pre_test_hook ${chart_name}
   create_app ${chart_name} $config_file
