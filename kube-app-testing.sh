@@ -26,7 +26,9 @@ DEFAULT_CLUSTER_TYPE=kind
 PYTHON_TESTS_DIR="test/kat"
 
 # gs cluster config
+DEFAULT_PROVIDER="aws"
 DEFAULT_GS_API_URL="https://api.g8s.gauss.eu-central-1.aws.gigantic.io"
+DEFAULT_REGION="eu-central-1"
 DEFAULT_AVAILABILITY_ZONE="eu-central-1a"
 DEFAULT_SCALING_MIN=1
 DEFAULT_SCALING_MAX=2
@@ -324,6 +326,33 @@ EOF
   fi
 }
 
+update_aws_sec_group () {
+  CLUSTER_ID=$1
+
+  # get the security group ID for the new cluster
+  SEC_GROUP_ID=$(aws ec2 describe-security-groups --region ${REGION} \
+    --filters Name=tag:giantswarm.io/cluster,Values=${CLUSTER_ID} \
+    Name=tag:aws:cloudformation:logical-id,Values=MasterSecurityGroup \
+    | jq -r .SecurityGroups[0].GroupId)
+
+  # check that we actually got a key pair back
+  grep -q "sg-" <<< $SEC_GROUP_ID
+  if [[ "$?" -gt 0 ]]; then
+    err "Could not find the Security Group ID."
+    exit 3
+  fi
+
+  # add a new rule to allow ingress from anywhere on 443
+  aws ec2 authorize-security-group-ingress --region ${REGION} --group-id ${SEC_GROUP_ID} \
+    --protocol tcp --port 443 --cidr 0.0.0.0/0
+
+  if [[ "$?" -gt 0 ]]; then
+    err "Could not add ingress rule to the Security Group."
+    exit 3
+  fi
+}
+
+
 create_gs_cluster () {
   info "Creating new tenant cluster."
 
@@ -435,7 +464,13 @@ create_gs_cluster () {
   # create the kubeconfig
   gen_gs_blob kubeconfig ${KUBECONFIG}
 
-  info "Test tenant cluster by listing pods in 'kube-system' namespace."
+  # update Security Group to allow access
+  update_aws_sec_group ${CLUSTER_ID}
+
+  # make sure the ingress rule has taken effect before we attempt to connect
+  sleep 30
+
+  info "Testing tenant cluster by listing pods in 'kube-system' namespace."
   # test connectivity
   kubectl get pods -n kube-system
   if [[ "$?" -gt 0 ]]; then
@@ -719,10 +754,13 @@ print_help () {
   echo "                                  available types: kind, giantswarm"
   echo "  --cluster-name                  name of the cluster."
   echo "  -n, --namespace                 namespace to deploy the tested app to"
+
   echo "  -a, --auth-token                auth token for the giantswarm API (only applies to"
   echo "                                  giantswarm cluster type)"
   echo "  -r, --release-version           giantswarm release to use (only applies to"
   echo "                                  giantswarm cluster type)"
+  echo "  --provider                      provider to deploy tenant cluster on"
+  echo "                                  available providers: aws (default)"
   echo "  --availability-zone             availability zone to deploy the cluster into, defaults to"
   echo "                                  'eu-central-1a'"
   echo "  --giantswarm-api-url            URL of the Giantswarm installation API, defaults to Gauss."
@@ -786,6 +824,10 @@ parse_args () {
         ;;
       --cluster-name)
         CLUSTER_NAME=$2
+        shift 2
+        ;;
+      --provider)
+        PROVIDER=$2
         shift 2
         ;;
       -a|--auth-token)
@@ -859,10 +901,19 @@ parse_args () {
       exit 3
     fi
 
+    if [[ -z $PROVIDER ]]; then
+      err "Provider must be provided with the '--provider' option."
+      exit 3
+    fi
+
+    PROVIDER=${PROVIDER:-$DEFAULT_PROVIDER}
     GS_API_URL=${GS_API_URL:-$DEFAULT_GS_API_URL}
     AVAILABILITY_ZONE=${AVAILABILITY_ZONE:-$DEFAULT_AVAILABILITY_ZONE}
     SCALING_MIN=${SCALING_MIN:-$DEFAULT_SCALING_MIN}
     SCALING_MAX=${SCALING_MAX:-$DEFAULT_SCALING_MAX}
+
+    # infer the region from the AZ (trims last character).
+    REGION=$(echo ${AVAILABILITY_ZONE} | rev | cut -c 2- | rev)
 
     info "Testing with release $GS_RELEASE against $GS_API_URL in AZ $AVAILABILITY_ZONE."
     info "Cluster will scale between $SCALING_MIN and $SCALING_MAX nodes."
