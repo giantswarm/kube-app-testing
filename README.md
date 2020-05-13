@@ -134,7 +134,7 @@ jobs:
       - run: pyenv versions
       - run: pyenv global 3.7.0
       - run: python --version
-      - run: pip install pipenv
+      - run: pip install pipenv aws-shell
       - run: curl -Lo /tmp/kind "https://github.com/kubernetes-sigs/kind/releases/download/v0.7.0/kind-$(uname)-amd64"
       - run: chmod +x /tmp/kind
       - run: curl -Lo /tmp/helm.tar.gz https://get.helm.sh/helm-v2.16.5-linux-amd64.tar.gz
@@ -144,16 +144,19 @@ jobs:
       - run: chmod +x /tmp/kind-app-testing.sh
       - run: curl -Lo /tmp/kubectl https://storage.googleapis.com/kubernetes-release/release/v1.18.0/bin/linux/amd64/kubectl
       - run: chmod +x /tmp/kubectl
-      - run: PATH="/tmp:$PATH" kind-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name wealdy-test -a ${GS_API_KEY} -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE} --giantswarm-api-url ${GS_API_URL}
+      - run:
+          command: PATH="/tmp:$PATH" kind-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name wealdy-test -a ${GS_API_KEY} -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE} --giantswarm-api-url ${GS_API_URL}
+          environment:
+            AWS_ACCESS_KEY_ID: ${CI_AWS_ACCESS_KEY_ID}
+            AWS_SECRET_ACCESS_KEY: ${CI_AWS_SECRET_ACCESS_KEY}
       - store_test_results:
           path: test-results
       - store_artifacts:
           path: test-results
       - run:
           name: Cleanup resources
-          command: PATH="/tmp:$PATH" kind-app-testing.sh -a ${GS_API_KEY}
+          command: PATH="/tmp:$PATH" kind-app-testing.sh --force-cleanup -a ${GS_API_KEY}
           when: on_fail
-
 
 workflows:
   version: 2
@@ -166,3 +169,10 @@ workflows:
             tags:
               only: /^v.*/
 ```
+
+Requirements:
+
+* AWS:
+  * IAM user with `ec2:AuthorizeSecurityGroupIngress` and `ec2:DescribeSecurityGroups`.
+  * IAM user's access key & key ID must be added as environment variables to the CircleCI project. These need to be passed to the job step where `kube-app-testing.sh` is run (see example above).
+  * the AWS CLI is required when testing against AWS.
