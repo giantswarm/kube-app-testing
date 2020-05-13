@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.3.3
+KAT_VERSION=0.3.4
 
 # config
 CONFIG_DIR=/tmp/kat_test
@@ -26,8 +26,8 @@ PYTHON_TESTS_DIR="test/kat"
 
 # docker image tags
 ARCHITECT_VERSION_TAG=latest
-APP_OPERATOR_VERSION_TAG=latest
-CHART_OPERATOR_VERSION_TAG=latest
+APP_OPERATOR_VERSION_TAG=1.0.2
+CHART_OPERATOR_VERSION_TAG=0.13.0
 CHART_MUSEUM_VERSION_TAG=v0.12.0
 PYTHON_VERSION_TAG=3.7-alpine
 CHART_TESTING_VERSION_TAG=v2.4.0
@@ -225,16 +225,15 @@ create_kind_cluster () {
   info "Cluster created, waiting for basic services to come up"
   kubectl -n kube-system rollout status deployment coredns
 
-  kubeconfig=$(cat ${KUBECONFIG})
   # create tools namespace
   kubectl create ns $TOOLS_NAMESPACE
   # start app+chart-operators
   info "Deploying \"app-operator\""
   kubectl -n ${TOOLS_NAMESPACE} create serviceaccount appcatalog
   kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=${TOOLS_NAMESPACE}:appcatalog
-  kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --service.kubernetes.incluster="false"
+  kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.incluster="true"
   info "Deploying \"chart-operator\""
-  kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog --generator=run-pod/v1 --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.kubeconfig="${kubeconfig}" --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="false"
+  kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="true"
   info "Waiting for app-operator to come up"
   kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pod/app-operator
 }
