@@ -118,4 +118,51 @@ python tests, follow this steps:
 
 ## Integration with circleci
 
-Sample integration config can be found in [giantswarm-todo-app](https://github.com/giantswarm/giantswarm-todo-app/blob/f45fac5bd107c193d6e82a4da81e8164fa6018ea/.circleci/config.yml#L40).
+Integration with CircleCI requires a job definition similar to the one below. Note that the last step in the job
+is important to ensure any dangling resources are removed if a run fails midway through.
+
+```yaml
+jobs:
+  run_kat_tests:
+    machine:
+      image: ubuntu-1604:201903-01
+    working_directory:
+      ~/giantswarm-todo
+    steps:
+      - restore_cache:
+          key: repo-{{ .Environment.CIRCLE_SHA1 }}-<< pipeline.git.tag >>
+      - run: pyenv versions
+      - run: pyenv global 3.7.0
+      - run: python --version
+      - run: pip install pipenv
+      - run: curl -Lo /tmp/kind "https://github.com/kubernetes-sigs/kind/releases/download/v0.7.0/kind-$(uname)-amd64"
+      - run: chmod +x /tmp/kind
+      - run: curl -Lo /tmp/helm.tar.gz https://get.helm.sh/helm-v2.16.5-linux-amd64.tar.gz
+      - run: tar zxf /tmp/helm.tar.gz -C /tmp && mv /tmp/linux-amd64/helm /tmp/helm
+      - run: /tmp/helm init -c
+      - run: curl -Lo /tmp/kind-app-testing.sh -q https://raw.githubusercontent.com/giantswarm/kube-app-testing/master/kube-app-testing.sh
+      - run: chmod +x /tmp/kind-app-testing.sh
+      - run: curl -Lo /tmp/kubectl https://storage.googleapis.com/kubernetes-release/release/v1.18.0/bin/linux/amd64/kubectl
+      - run: chmod +x /tmp/kubectl
+      - run: PATH="/tmp:$PATH" kind-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name wealdy-test -a ${GS_API_KEY} -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE} --giantswarm-api-url ${GS_API_URL}
+      - store_test_results:
+          path: test-results
+      - store_artifacts:
+          path: test-results
+      - run:
+          name: Cleanup resources
+          command: PATH="/tmp:$PATH" kind-app-testing.sh -a ${GS_API_KEY}
+          when: on_fail
+
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - run_kat_tests:
+          requires:
+            - <add any jobs which must run first here>
+          filters:
+            tags:
+              only: /^v.*/
+```
