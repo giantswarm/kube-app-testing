@@ -902,11 +902,6 @@ parse_args () {
       exit 3
     fi
 
-    if [[ -z $PROVIDER ]]; then
-      err "Provider must be provided with the '--provider' option."
-      exit 3
-    fi
-
     PROVIDER=${PROVIDER:-$DEFAULT_PROVIDER}
     GS_API_URL=${GS_API_URL:-$DEFAULT_GS_API_URL}
     AVAILABILITY_ZONE=${AVAILABILITY_ZONE:-$DEFAULT_AVAILABILITY_ZONE}
