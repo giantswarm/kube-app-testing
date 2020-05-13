@@ -1,8 +1,8 @@
 # kube-app-testing
 
-This script builds and tests a helm chart using a kind cluster. The only required
-parameter is `[chart name]`, which needs to be a name of the chart which is present
-in directory `helm/`.
+This script builds and tests a helm chart using either a KinD cluster, or a full Giant Swarm tenant
+cluster. The only required parameter is `[chart name]`, which needs to be a name of the chart which
+ is present in directory `helm/`.
 
 ## Installation
 
@@ -57,6 +57,7 @@ Following tools must be installed in the system:
 - kind
 - helm
 - curl
+- jq
 
 ## Development setup for functional tests with python
 
@@ -116,7 +117,7 @@ python tests, follow this steps:
       --values-file [""|../../[app]/ci/[config_file.yaml]
    ```
 
-## Integration with circleci
+## Integration with CircleCI
 
 Integration with CircleCI requires a job definition similar to the one below. Note that the last step in the job
 is important to ensure any dangling resources are removed if a run fails midway through.
