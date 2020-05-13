@@ -707,7 +707,7 @@ print_help () {
   echo "  --force-cleanup                 using force cleanup allows the script to be run independently"
   echo "                                  of the main job. This allows it to clean up any dangling resources"
   echo "                                  left by a failure mid-job. Must be run in a CircleCI job with the"
-  echo "                                  `when: always` value set. If the cluster is a GS cluster then the"
+  echo "                                  `when: on_fail` value set. If the cluster is a GS cluster then the"
   echo "                                  auth token must also be provided with '-a'."
   echo "  -k, --keep-after-test           after first test is successful, abort and keep"
   echo "                                  the test cluster running"
