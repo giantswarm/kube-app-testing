@@ -9,12 +9,12 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.3.4
+KAT_VERSION=0.3.6
 
 # config
 CONFIG_DIR=/tmp/kat_test
 TMP_DIR=/tmp/kat
-export KUBECONFIG=${CONFIG_DIR}/kubei.config
+export KUBECONFIG=${CONFIG_DIR}/kube.config
 CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
 CHART_DEPLOY_NAMESPACE=default
@@ -175,7 +175,7 @@ EOF
 log () {
   level=$1
   shift 1
-  date --rfc-3339=seconds -u | tr -d '\n'
+  date -u +"%Y-%m-%dT%H:%M:%SZ" | tr -d '\n'
   echo " [${level}] $@"
 }
 
@@ -221,7 +221,7 @@ create_kind_cluster () {
   fi
 
   kind create cluster --name ${CLUSTER_NAME} --config ${CONFIG_DIR}/kind.yaml
-  kind get kubeconfig --name ${CLUSTER_NAME} --internal > ${KUBECONFIG}
+  kind get kubeconfig --name ${CLUSTER_NAME} > ${KUBECONFIG}
   info "Cluster created, waiting for basic services to come up"
   kubectl -n kube-system rollout status deployment coredns
 
@@ -396,7 +396,7 @@ run_pytest () {
     -v ${TMP_DIR}/.local:/root/.local \
     -v ${TMP_DIR}/.cache:/root/.cache \
     -v `pwd`:/chart -w /chart \
-    -v ${CONFIG_DIR}/kubei.config:/kube.config:ro \
+    -v ${KUBECONFIG}:/kube.config:ro \
     python:${PYTHON_VERSION_TAG} sh \
     -c "pip install --user pipenv \
     && cd ${PYTHON_TESTS_DIR} \
