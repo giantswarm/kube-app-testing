@@ -245,11 +245,11 @@ create_kind_cluster () {
   info "Deploying \"app-operator\""
   kubectl -n ${TOOLS_NAMESPACE} create serviceaccount appcatalog
   kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=${TOOLS_NAMESPACE}:appcatalog
-  kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.incluster="true"
+  kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog -l app=app-operator --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.incluster="true"
   info "Deploying \"chart-operator\""
-  kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="true"
+  kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog -l app=chart-operator --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="true"
   info "Waiting for app-operator to come up"
-  kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pod/app-operator
+  kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pods -l app=app-operator
 }
 
 delete_kind_cluster () {
@@ -558,7 +558,7 @@ start_tools () {
   info "Deploying \"chart-museum\""
   chart_museum_deploy
   info "Waiting for chart-operator to come up"
-  kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pod/chart-operator
+  kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pods -l app=chart-operator
   info "Waiting for AppCatalog/App/Chart CRDs to be registered with API server"
   wait_for_resource ${TOOLS_NAMESPACE} crd/appcatalogs.application.giantswarm.io
   wait_for_resource ${TOOLS_NAMESPACE} crd/apps.application.giantswarm.io
@@ -760,7 +760,6 @@ print_help () {
   echo "                                  available types: kind, giantswarm"
   echo "  --cluster-name                  name of the cluster."
   echo "  -n, --namespace                 namespace to deploy the tested app to"
-
   echo "  -a, --auth-token                auth token for the giantswarm API (only applies to"
   echo "                                  giantswarm cluster type)"
   echo "  -r, --release-version           giantswarm release to use (only applies to"
