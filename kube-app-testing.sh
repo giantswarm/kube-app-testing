@@ -298,15 +298,6 @@ create_kind_cluster () {
   kubeconfig=$(cat ${KUBECONFIG})
   # create tools namespace
   kubectl create ns $TOOLS_NAMESPACE
-  # start app+chart-operators
-  info "Deploying \"app-operator\""
-  kubectl -n ${TOOLS_NAMESPACE} create serviceaccount appcatalog
-  kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=${TOOLS_NAMESPACE}:appcatalog
-  kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog -l app=app-operator --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.incluster="true"
-  info "Deploying \"chart-operator\""
-  kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog -l app=chart-operator --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="true"
-  info "Waiting for app-operator to come up"
-  kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pods -l app=app-operator
 }
 
 delete_kind_cluster () {
@@ -617,6 +608,8 @@ delete_cluster () {
 }
 
 start_tools () {
+  CLUSTER_TYPE=$1
+
   # we need to wait for the namespace to be created for us in GS clusters.
   until kubectl get ns | grep -q ${TOOLS_NAMESPACE}; do
     info "waiting for namespace ${TOOLS_NAMESPACE} to be created."
@@ -625,6 +618,21 @@ start_tools () {
 
   info "Deploying \"chart-museum\""
   chart_museum_deploy
+
+  # deploy app-operator to all cluster types
+  info "Deploying \"app-operator\""
+  kubectl -n ${TOOLS_NAMESPACE} create serviceaccount appcatalog
+  kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=${TOOLS_NAMESPACE}:appcatalog
+  kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog -l app=app-operator --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.incluster="true"
+
+  # only deploy chart-operator to kind clusters
+  if [[ "$CLUSTER_TYPE" == "kind" ]]; then
+    info "Deploying \"chart-operator\""
+    kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog -l app=chart-operator --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="true"
+  fi
+
+  info "Waiting for app-operator to come up"
+  kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pods -l app=app-operator
   info "Waiting for chart-operator to come up"
   kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pods -l app=chart-operator
   info "Waiting for AppCatalog/App/Chart CRDs to be registered with API server"
@@ -781,7 +789,7 @@ run_tests_for_single_config () {
   config_file=$2
 
   create_cluster $CLUSTER_TYPE
-  start_tools
+  start_tools $CLUSTER_TYPE
   CHART_VERSION=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
   upload_chart ${chart_name}
   run_pre_test_hook ${chart_name}
