@@ -145,11 +145,7 @@ jobs:
       - run: chmod +x /tmp/kind-app-testing.sh
       - run: curl -Lo /tmp/kubectl https://storage.googleapis.com/kubernetes-release/release/v1.18.0/bin/linux/amd64/kubectl
       - run: chmod +x /tmp/kubectl
-      - run:
-          command: PATH="/tmp:$PATH" kind-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name wealdy-test -a ${GS_API_KEY} -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE} --giantswarm-api-url ${GS_API_URL}
-          environment:
-            AWS_ACCESS_KEY_ID: ${CI_AWS_ACCESS_KEY_ID}
-            AWS_SECRET_ACCESS_KEY: ${CI_AWS_SECRET_ACCESS_KEY}
+      - run: PATH="/tmp:$PATH" kind-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name wealdy-test -a ${GS_API_KEY} -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE} --giantswarm-api-url ${GS_API_URL}
       - store_test_results:
           path: test-results
       - store_artifacts:
@@ -174,6 +170,6 @@ workflows:
 Requirements:
 
 * AWS:
-  * IAM user with `ec2:AuthorizeSecurityGroupIngress` and `ec2:DescribeSecurityGroups`.
-  * IAM user's access key & key ID must be added as environment variables to the CircleCI project. These need to be passed to the job step where `kube-app-testing.sh` is run (see example above).
+  * IAM user with `ec2:AuthorizeSecurityGroupIngress` and `ec2:DescribeSecurityGroups` **in the tenant cluster account**.
+  * IAM user's access key & key ID must be added as environment variables to the CircleCI project. They should be called `AWS_ACCESS_KEY_ID` & `AWS_SECRET_ACCESS_KEY`.
   * the AWS CLI is required when testing against AWS.
