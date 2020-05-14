@@ -818,10 +818,10 @@ run_tests_for_single_config () {
   chart_name=$1
   config_file=$2
 
-  create_cluster $CLUSTER_TYPE
-  start_tools $CLUSTER_TYPE
+  create_cluster ${CLUSTER_TYPE}
+  start_tools ${CLUSTER_TYPE}
   CHART_VERSION=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
-  upload_chart ${chart_name}
+  upload_chart ${chart_name} ${CLUSTER_TYPE}
   run_pre_test_hook ${chart_name}
   create_app ${chart_name} $config_file
   verify_helm ${chart_name}
