@@ -237,6 +237,9 @@ create_kind_cluster () {
   # write cluster details to file to run a manual cleanup later if required.
   echo "export CLUSTER_NAME=${CLUSTER_NAME}" > ${ENV_DETAILS_FILE}
   echo "export CLUSTER_TYPE=${CLUSTER_TYPE}" >> ${ENV_DETAILS_FILE}
+  if [ $KEEP_AFTER_TEST ]; then
+    echo "export KEEP_AFTER_TEST=${KEEP_AFTER_TEST}" >> ${ENV_DETAILS_FILE}
+  fi
 
   kubeconfig=$(cat ${KUBECONFIG})
   # create tools namespace
@@ -407,6 +410,9 @@ create_gs_cluster () {
   echo "export CLUSTER_ID=${CLUSTER_ID}" > ${ENV_DETAILS_FILE}
   echo "export CLUSTER_TYPE=${CLUSTER_TYPE}" >> ${ENV_DETAILS_FILE}
   echo "export GS_API_URL=${GS_API_URL}" >> ${ENV_DETAILS_FILE}
+  if [ $KEEP_AFTER_TEST ]; then
+    echo "export KEEP_AFTER_TEST=${KEEP_AFTER_TEST}" >> ${ENV_DETAILS_FILE}
+  fi
 
   info "Creating nodepool for cluster ${CLUSTER_ID}"
   # create a nodepool
