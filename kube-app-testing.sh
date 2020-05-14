@@ -177,6 +177,27 @@ nodes:
 EOF
 }
 
+create_app_operator_netpol () {
+  kubectl create -f - << EOF
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-operator-network-policy
+  namespace: ${TOOLS_NAMESPACE}
+spec:
+  podSelector:
+    matchLabels:
+      app: app-operator
+  egress:
+  - {}
+  ingress:
+  - {}
+  policyTypes:
+  - Egress
+  - Ingress
+EOF
+}
+
 create_app_catalog_cr () {
   kubectl create -f - << EOF
 apiVersion: application.giantswarm.io/v1alpha1
