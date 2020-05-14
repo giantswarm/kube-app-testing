@@ -708,7 +708,15 @@ build_chart () {
 }
 
 upload_chart () {
+  # $1 is passed but not used
+  cluster_type=$2
+
   info "Uploading chart ${CHART_FILE_NAME} to chart-museum..."
+  # we need to port-foward to the remote cluster to upload the chart.
+  if [[ "$CLUSTER_TYPE" == "giantswarm" ]]; then
+    kubectl port-forward service/chart-museum 8080:8080 &
+    sleep 5
+  fi
   curl --data-binary "@${CHART_FILE_NAME}" http://localhost:8080/api/charts
 }
 
