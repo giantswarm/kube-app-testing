@@ -518,6 +518,11 @@ force_cleanup () {
     exit 0
   fi
 
+  if [ $KEEP_AFTER_TEST ]; then
+    warn "--keep-after-test was used, cluster will not be cleaned up even though --force-cleanup was set."
+    exit 0
+  else
+
   # pick up cluster details from previous run.
   source ${ENV_DETAILS_FILE}
 
