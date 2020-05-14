@@ -557,6 +557,12 @@ delete_cluster () {
 }
 
 start_tools () {
+  # we need to wait for the namespace to be created for us in GS clusters.
+  until kubectl get ns | grep -q ${TOOLS_NAMESPACE}; do
+    info "waiting for namespace ${TOOLS_NAMESPACE} to be created."
+    sleep 10
+  done
+
   info "Deploying \"chart-museum\""
   chart_museum_deploy
   info "Waiting for chart-operator to come up"
