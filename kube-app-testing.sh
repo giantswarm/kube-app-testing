@@ -329,6 +329,7 @@ EOF
 update_aws_sec_group () {
   CLUSTER_ID=$1
 
+  info "Getting Security Group ID for cluster ${CLUSTER_ID}"
   # get the security group ID for the new cluster
   SEC_GROUP_ID=$(aws ec2 describe-security-groups --region ${REGION} \
     --filters Name=tag:giantswarm.io/cluster,Values=${CLUSTER_ID} \
@@ -342,6 +343,7 @@ update_aws_sec_group () {
     exit 3
   fi
 
+  info "Adding ingress rule for 0.0.0.0/0 to Security Group ${SEC_GROUP_ID}"
   # add a new rule to allow ingress from anywhere on 443
   aws ec2 authorize-security-group-ingress --region ${REGION} --group-id ${SEC_GROUP_ID} \
     --protocol tcp --port 443 --cidr 0.0.0.0/0
