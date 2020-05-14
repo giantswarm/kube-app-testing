@@ -659,12 +659,21 @@ start_tools () {
 
   info "Waiting for app-operator to come up"
   kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pods -l app=app-operator
-  info "Waiting for chart-operator to come up"
+
+  # we may have to wait for the deployment to be created in a GS cluster, otherwise
+  # the following 'kubectl wait' will fail
+  until kubectl -n ${TOOLS_NAMESPACE} get pods -l app=chart-operator 2> /dev/null | grep -q chart-operator; do
+    info "Waiting for chart-operator to start"
+    sleep 10
+  done
+  info "Waiting for chart-operator to become ready"
   kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pods -l app=chart-operator
+
   info "Waiting for AppCatalog/App/Chart CRDs to be registered with API server"
   wait_for_resource ${TOOLS_NAMESPACE} crd/appcatalogs.application.giantswarm.io
   wait_for_resource ${TOOLS_NAMESPACE} crd/apps.application.giantswarm.io
   wait_for_resource ${TOOLS_NAMESPACE} crd/charts.application.giantswarm.io
+
   info "Creating AppCatalog CR for \"chart-museum\""
   create_app_catalog_cr
 }
