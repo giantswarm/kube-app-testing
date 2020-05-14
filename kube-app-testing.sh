@@ -521,6 +521,7 @@ create_gs_cluster () {
   update_aws_sec_group ${CLUSTER_ID}
 
   # make sure the ingress rule has taken effect before we attempt to connect
+  info "Sleeping for 30 seconds to ensure ingress rule has been applied."
   sleep 30
 
   info "Testing tenant cluster by listing pods in 'kube-system' namespace."
