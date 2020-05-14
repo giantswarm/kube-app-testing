@@ -49,7 +49,36 @@ chart_museum_deploy () {
   name="chart-museum"
   image=chartmuseum/chartmuseum:${CHART_MUSEUM_VERSION_TAG}
 
+  kubectl -n ${TOOLS_NAMESPACE} create serviceaccount ${name}
+
   kubectl create -f - << EOF
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: ${name}-psp
+rules:
+- apiGroups:
+  - extensions
+  resources:
+  - podsecuritypolicies
+  resourceNames:
+  - ${name}-psp
+  verbs:
+  - use
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: ${name}-psp
+subjects:
+- kind: ServiceAccount
+  name: ${name}
+  namespace: ${TOOLS_NAMESPACE}
+roleRef:
+  kind: ClusterRole
+  name: ${name}-psp
+  apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -68,6 +97,7 @@ spec:
       labels:
         app: ${name}
     spec:
+      serviceAccountName: ${name}
       containers:
       - name: ${name}
         image: ${image}
@@ -86,6 +116,30 @@ spec:
       volumes:
       - name: chart-volume
         emptyDir: {}
+---
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: ${name}-psp
+spec:
+  allowPrivilegeEscalation: true
+  fsGroup:
+    rule: RunAsAny
+  hostIPC: false
+  hostNetwork: false
+  hostPID: false
+  hostPorts:
+  - max: 65536
+    min: 1
+  privileged: true
+  runAsUser:
+    rule: RunAsAny
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+  volumes:
+  - '*'
 ---
 apiVersion: v1
 kind: Service
