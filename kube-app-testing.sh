@@ -433,7 +433,7 @@ create_gs_cluster () {
     info "Waiting for cluster ${CLUSTER_ID} to be ready."
     sleep 30
   done
-  set -x
+
   info "Creating key-pair for tenant cluster access."
   # create a key pair (must be stored directly in a variable)
   _key_pair=$(curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/key-pairs/ -X POST \
@@ -469,7 +469,7 @@ create_gs_cluster () {
 
   # make sure the ingress rule has taken effect before we attempt to connect
   sleep 30
-  set +x
+
   info "Testing tenant cluster by listing pods in 'kube-system' namespace."
   # test connectivity
   kubectl get pods -n kube-system
