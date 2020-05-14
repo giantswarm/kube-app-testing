@@ -645,6 +645,10 @@ start_tools () {
   info "Deploying \"app-operator\""
   kubectl -n ${TOOLS_NAMESPACE} create serviceaccount appcatalog
   kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=${TOOLS_NAMESPACE}:appcatalog
+  # tenant clusters have a default deny-all network policy which breaks app-operator
+  if [[ "$CLUSTER_TYPE" == "giantswarm" ]]; then
+    create_app_operator_netpol
+  fi
   kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog -l app=app-operator --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.incluster="true"
 
   # only deploy chart-operator to kind clusters
