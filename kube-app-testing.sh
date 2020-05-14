@@ -580,13 +580,13 @@ force_cleanup () {
     exit 0
   fi
 
-  if [ $KEEP_AFTER_TEST ]; then
+  # pick up cluster details from previous run.
+  source ${ENV_DETAILS_FILE}
+
+  if [[ $KEEP_AFTER_TEST -eq 1 ]]; then
     warn "--keep-after-test was used, cluster will not be cleaned up even though --force-cleanup was set."
     exit 0
   fi
-
-  # pick up cluster details from previous run.
-  source ${ENV_DETAILS_FILE}
 
   # the GS API token must be provided again - this is because it shouldn't be written
   # to the filesystem at any point.
