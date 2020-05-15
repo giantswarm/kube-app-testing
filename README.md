@@ -145,7 +145,7 @@ jobs:
       - run: chmod +x /tmp/kind-app-testing.sh
       - run: curl -Lo /tmp/kubectl https://storage.googleapis.com/kubernetes-release/release/v1.18.0/bin/linux/amd64/kubectl
       - run: chmod +x /tmp/kubectl
-      - run: PATH="/tmp:$PATH" kind-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name wealdy-test -a ${GS_API_KEY} -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE} --giantswarm-api-url ${GS_API_URL}
+      - run: PATH="/tmp:$PATH" kind-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name ci-<insert-app-name-here> -a ${GS_API_KEY} -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE} --giantswarm-api-url ${GS_API_URL}
       - store_test_results:
           path: test-results
       - store_artifacts:
