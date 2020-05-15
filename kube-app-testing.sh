@@ -677,10 +677,19 @@ start_tools () {
   cluster_type=$1
 
   # we need to wait for the namespace to be created for us in GS clusters.
+  _counter=0
   until kubectl get ns | grep -q ${TOOLS_NAMESPACE}; do
+    if [[ "$_counter" -gt 30 ]]; then
+      err "namespace: ${TOOLS_NAMESPACE} not created after 5 minutes."
+      exit 3
+    fi
+
+    # increment the counter
+    _counter=$((_counter+1))
     info "waiting for namespace ${TOOLS_NAMESPACE} to be created."
     sleep 10
   done
+  unset _counter
 
   info "Deploying \"chart-museum\""
   chart_museum_deploy ${cluster_type}
@@ -708,6 +717,7 @@ start_tools () {
   # the following 'kubectl wait' will fail
   _counter=0
   until kubectl -n ${TOOLS_NAMESPACE} get pods -l app=chart-operator 2> /dev/null | grep -q chart-operator; do
+    # timeout after 10 minutes
     if [[ "$_counter" -gt 60 ]]; then
       err "chart-operator not running after 10 minutes."
       exit 3
@@ -718,6 +728,7 @@ start_tools () {
     info "Waiting for chart-operator to start"
     sleep 10
   done
+  unset _counter
 
   info "Waiting for chart-operator to become ready (times out after 120s)"
   kubectl -n ${TOOLS_NAMESPACE} wait --timeout=120s --for=condition=Ready pods -l app=chart-operator
