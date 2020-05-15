@@ -706,7 +706,15 @@ start_tools () {
 
   # we may have to wait for the deployment to be created in a GS cluster, otherwise
   # the following 'kubectl wait' will fail
+  _counter=0
   until kubectl -n ${TOOLS_NAMESPACE} get pods -l app=chart-operator 2> /dev/null | grep -q chart-operator; do
+    if [[ "$_counter" -gt 60 ]]; then
+      err "chart-operator not running after 10 minutes."
+      exit 3
+    fi
+
+    # increment the counter
+    _counter=$((_counter+1))
     info "Waiting for chart-operator to start"
     sleep 10
   done
