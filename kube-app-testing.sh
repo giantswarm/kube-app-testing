@@ -1032,11 +1032,9 @@ parse_args () {
         SCALING_MAX=$2
         shift 2
         ;;
-      # `--force-cleanup` should always be last to allow flags
-      # required for cleanup to be parsed first.
       --force-cleanup)
-        force_cleanup
-        exit 0
+        FORCE_CLEANUP=1
+        shift 1
         ;;
       *)
         print_help
@@ -1052,6 +1050,11 @@ parse_args () {
   CLUSTER_NAME=${CLUSTER_NAME}-${CLUSTER_NAME_SUFFIX}
 
   CLUSTER_TYPE=${CLUSTER_TYPE:-$DEFAULT_CLUSTER_TYPE}
+
+  # don't parse any other flags as we don't need them for the cleanup stage.
+  if [[ ! -z ${FORCE_CLEANUP} ]]; then
+    force_cleanup
+  fi
 
   if [[ -z $CHART_NAME ]]; then
     err "chart name must be given with '-c' option"
