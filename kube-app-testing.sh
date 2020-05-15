@@ -674,7 +674,7 @@ delete_cluster () {
 }
 
 start_tools () {
-  CLUSTER_TYPE=$1
+  cluster_type=$1
 
   # we need to wait for the namespace to be created for us in GS clusters.
   until kubectl get ns | grep -q ${TOOLS_NAMESPACE}; do
@@ -683,20 +683,20 @@ start_tools () {
   done
 
   info "Deploying \"chart-museum\""
-  chart_museum_deploy ${CLUSTER_TYPE}
+  chart_museum_deploy ${cluster_type}
 
   # deploy app-operator to all cluster types
   info "Deploying \"app-operator\""
   kubectl -n ${TOOLS_NAMESPACE} create serviceaccount appcatalog
   kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=${TOOLS_NAMESPACE}:appcatalog
   # tenant clusters have a default deny-all network policy which breaks app-operator
-  if [[ "$CLUSTER_TYPE" == "giantswarm" ]]; then
+  if [[ "$cluster_type" == "giantswarm" ]]; then
     create_app_operator_netpol
   fi
   kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog -l app=app-operator --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.incluster="true"
 
   # only deploy chart-operator to kind clusters
-  if [[ "$CLUSTER_TYPE" == "kind" ]]; then
+  if [[ "$cluster_type" == "kind" ]]; then
     info "Deploying \"chart-operator\""
     kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog -l app=chart-operator --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="true"
   fi
@@ -779,7 +779,7 @@ upload_chart () {
 
   info "Uploading chart ${CHART_FILE_NAME} to chart-museum..."
   # we need to port-foward to the remote cluster to upload the chart.
-  if [[ "$CLUSTER_TYPE" == "giantswarm" ]]; then
+  if [[ "$cluster_type" == "giantswarm" ]]; then
     kubectl port-forward -n ${TOOLS_NAMESPACE} service/chart-museum 8080:8080 &
     sleep 5
   fi
