@@ -162,6 +162,7 @@ spec:
   - Ingress
 EOF
 
+# kind clusters use nodeports for access
 if [[ "${cluster_type}" == "kind" ]]; then
   kubectl create -f - << EOF
 ---
@@ -182,6 +183,7 @@ spec:
   selector:
     app: ${name}
 EOF
+# giant swarm clusters use clusterips for access
 elif [[ "${cluster_type}" == "giantswarm" ]]; then
   kubectl create -f - << EOF
 ---
@@ -440,12 +442,12 @@ EOF
 }
 
 update_aws_sec_group () {
-  CLUSTER_ID=$1
+  cluster_id=$1
 
-  info "Getting Security Group ID for cluster ${CLUSTER_ID}"
+  info "Getting Security Group ID for cluster ${cluster_id}"
   # get the security group ID for the new cluster
   SEC_GROUP_ID=$(aws ec2 describe-security-groups --region ${REGION} \
-    --filters Name=tag:giantswarm.io/cluster,Values=${CLUSTER_ID} \
+    --filters Name=tag:giantswarm.io/cluster,Values=${cluster_id} \
     Name=tag:aws:cloudformation:logical-id,Values=MasterSecurityGroup \
     | jq -r .SecurityGroups[0].GroupId)
 
@@ -641,7 +643,7 @@ force_cleanup () {
   source ${ENV_DETAILS_FILE}
 
   if [[ $KEEP_AFTER_TEST -eq 1 ]]; then
-    warn "--keep-after-test was used, cluster will not be cleaned up even though --force-cleanup was set."
+    warn "--keep-after-test was set, cluster will not be cleaned up even though --force-cleanup was set."
     exit 0
   fi
 

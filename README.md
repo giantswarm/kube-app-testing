@@ -152,7 +152,7 @@ jobs:
           path: test-results
       - run:
           name: Cleanup resources
-          command: PATH="/tmp:$PATH" kind-app-testing.sh --force-cleanup -a ${GS_API_KEY}
+          command: PATH="/tmp:$PATH" kind-app-testing.sh -a ${GS_API_KEY} --force-cleanup
           when: on_fail
 
 workflows:
@@ -172,4 +172,4 @@ Requirements:
 * AWS:
   * IAM user with `ec2:AuthorizeSecurityGroupIngress` and `ec2:DescribeSecurityGroups` **in the tenant cluster account**.
   * IAM user's access key & key ID must be added as environment variables to the CircleCI project. They should be called `AWS_ACCESS_KEY_ID` & `AWS_SECRET_ACCESS_KEY`.
-  * the AWS CLI is required when testing against AWS.
+  * The AWS CLI is required when testing against AWS.
