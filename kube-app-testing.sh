@@ -141,6 +141,25 @@ spec:
     rule: RunAsAny
   volumes:
   - '*'
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ${name}-network-policy
+  namespace: ${TOOLS_NAMESPACE}
+spec:
+  egress:
+  - {}
+  ingress:
+  - ports:
+    - port: 8080
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      app: ${name}
+  policyTypes:
+  - Egress
+  - Ingress
 EOF
 
 if [[ "${cluster_type}" == "kind" ]]; then
