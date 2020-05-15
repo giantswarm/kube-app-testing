@@ -46,6 +46,7 @@ CHART_TESTING_VERSION_TAG=v2.4.0
 ####################
 
 chart_museum_deploy () {
+  cluster_type=$1
   name="chart-museum"
   image=chartmuseum/chartmuseum:${CHART_MUSEUM_VERSION_TAG}
 
@@ -140,6 +141,10 @@ spec:
     rule: RunAsAny
   volumes:
   - '*'
+EOF
+
+if [[ "${cluster_type}" == "kind" ]]; then
+  kubectl create -f - << EOF
 ---
 apiVersion: v1
 kind: Service
@@ -158,6 +163,26 @@ spec:
   selector:
     app: ${name}
 EOF
+elif [[ "${cluster_type}" == "giantswarm" ]]; then
+  kubectl create -f - << EOF
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${name}
+  namespace: ${TOOLS_NAMESPACE}
+  labels:
+    app: ${name}
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: ${name}
+EOF
+fi
   kubectl -n ${TOOLS_NAMESPACE} rollout status deployment ${name}
 }
 
@@ -639,7 +664,7 @@ start_tools () {
   done
 
   info "Deploying \"chart-museum\""
-  chart_museum_deploy
+  chart_museum_deploy ${CLUSTER_TYPE}
 
   # deploy app-operator to all cluster types
   info "Deploying \"app-operator\""
