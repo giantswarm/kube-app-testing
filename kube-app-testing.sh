@@ -718,8 +718,9 @@ start_tools () {
     info "Waiting for chart-operator to start"
     sleep 10
   done
-  info "Waiting for chart-operator to become ready"
-  kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pods -l app=chart-operator
+
+  info "Waiting for chart-operator to become ready (times out after 120s)"
+  kubectl -n ${TOOLS_NAMESPACE} wait --timeout=120s --for=condition=Ready pods -l app=chart-operator
 
   info "Waiting for AppCatalog/App/Chart CRDs to be registered with API server"
   wait_for_resource ${TOOLS_NAMESPACE} crd/appcatalogs.application.giantswarm.io
