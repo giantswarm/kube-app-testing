@@ -863,7 +863,7 @@ run_pytest () {
   # if the tests are running against a KinD cluster then we want to use the internal
   # config we generated earlier. if this isn't a KinD cluster then we just skip past
   # and use the kubeconfig generated for external access
-  if [[ "${CLUSTER_TYPE}" == "kind" ]]
+  if [[ "${CLUSTER_TYPE}" == "kind" ]]; then
     KUBECONFIG=${KUBECONFIG_I}
   fi
   pipenv_cmd='PATH=$HOME/.local/bin:$PATH pipenv sync && PATH=$HOME/.local/bin:$PATH pipenv run pytest --full-trace --verbosity=8 .'
