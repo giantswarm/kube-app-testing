@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.3.7
+KAT_VERSION=0.3.8
 
 # config
 CONFIG_DIR=/tmp/kat_test
@@ -350,8 +350,9 @@ create_kind_cluster () {
     info "Using provided KinD config file ${KIND_CONFIG_FILE}"
   fi
 
-  kind create cluster --name ${CLUSTER_NAME} --config ${CONFIG_DIR}/kind.yaml
+  kind create cluster --name ${CLUSTER_NAME} --config ${KIND_CONFIG_FILE}
   kind get kubeconfig --name ${CLUSTER_NAME} > ${KUBECONFIG}
+  kind get kubeconfig --name ${CLUSTER_NAME} --internal > ${KUBECONFIG_I}
   info "Cluster created, waiting for basic services to come up"
   kubectl -n kube-system rollout status deployment coredns
 
@@ -858,14 +859,14 @@ run_pytest () {
   done
 
   info "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
-  pipenv_cmd='PATH=$HOME/.local/bin:$PATH pipenv sync && PATH=$HOME/.local/bin:$PATH pipenv run pytest'
+  pipenv_cmd='PATH=$HOME/.local/bin:$PATH pipenv sync && PATH=$HOME/.local/bin:$PATH pipenv run pytest --full-trace --verbosity=8 .'
   docker run -it --rm \
     -v ${TMP_DIR}/.local:/root/.local \
     -v ${TMP_DIR}/.cache:/root/.cache \
     -v `pwd`:/chart -w /chart \
-    -v ${KUBECONFIG}:/kube.config:ro \
+    -v ${KUBECONFIG_I}:/kube.config:ro \
     python:${PYTHON_VERSION_TAG} sh \
-    -c "pip install --user pipenv \
+    -c "pip install pipenv \
     && cd ${PYTHON_TESTS_DIR} \
     && $pipenv_cmd \
       --kube-config /kube.config \
