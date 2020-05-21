@@ -16,6 +16,7 @@ CONFIG_DIR=/tmp/kat_test
 TMP_DIR=/tmp/kat
 ENV_DETAILS_FILE=/tmp/env-details
 export KUBECONFIG=${CONFIG_DIR}/kube.config
+export KUBECONFIG_I=${CONFIG_DIR}/kube_internal.config
 DEFAULT_CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
 CHART_DEPLOY_NAMESPACE=default
@@ -859,12 +860,18 @@ run_pytest () {
   done
 
   info "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
+  # if the tests are running against a KinD cluster then we want to use the internal
+  # config we generated earlier. if this isn't a KinD cluster then we just skip past
+  # and use the kubeconfig generated for external access
+  if [[ "${CLUSTER_TYPE}" ==  "kind" ]]
+    KUBECONFIG=${KUBECONFIG_I}
+  fi
   pipenv_cmd='PATH=$HOME/.local/bin:$PATH pipenv sync && PATH=$HOME/.local/bin:$PATH pipenv run pytest --full-trace --verbosity=8 .'
   docker run -it --rm \
     -v ${TMP_DIR}/.local:/root/.local \
     -v ${TMP_DIR}/.cache:/root/.cache \
     -v `pwd`:/chart -w /chart \
-    -v ${KUBECONFIG_I}:/kube.config:ro \
+    -v ${KUBECONFIG}:/kube.config:ro \
     python:${PYTHON_VERSION_TAG} sh \
     -c "pip install pipenv \
     && cd ${PYTHON_TESTS_DIR} \
