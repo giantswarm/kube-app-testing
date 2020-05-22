@@ -15,8 +15,8 @@ KAT_VERSION=0.3.8
 CONFIG_DIR=/tmp/kat_test
 TMP_DIR=/tmp/kat
 ENV_DETAILS_FILE=/tmp/env-details
-export KUBECONFIG=${CONFIG_DIR}/kube.config
-export KUBECONFIG_I=${CONFIG_DIR}/kube_internal.config
+export KUBECONFIG="${CONFIG_DIR}"/kube.config
+export KUBECONFIG_I="${CONFIG_DIR}"/kube_internal.config
 DEFAULT_CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
 CHART_DEPLOY_NAMESPACE=default
@@ -29,7 +29,6 @@ PYTHON_TESTS_DIR="test/kat"
 # gs cluster config
 DEFAULT_PROVIDER="aws"
 DEFAULT_GS_API_URL="https://api.g8s.gauss.eu-central-1.aws.gigantic.io"
-DEFAULT_REGION="eu-central-1"
 DEFAULT_AVAILABILITY_ZONE="eu-central-1a"
 DEFAULT_SCALING_MIN=1
 DEFAULT_SCALING_MAX=2
@@ -49,9 +48,9 @@ CHART_TESTING_VERSION_TAG=v2.4.0
 chart_museum_deploy () {
   cluster_type=$1
   name="chart-museum"
-  image=chartmuseum/chartmuseum:${CHART_MUSEUM_VERSION_TAG}
+  image=chartmuseum/chartmuseum:"${CHART_MUSEUM_VERSION_TAG}"
 
-  kubectl -n ${TOOLS_NAMESPACE} create serviceaccount ${name}
+  kubectl -n "${TOOLS_NAMESPACE}" create serviceaccount "${name}"
 
   kubectl create -f - << EOF
 ---
@@ -205,11 +204,11 @@ spec:
     app: ${name}
 EOF
 fi
-  kubectl -n ${TOOLS_NAMESPACE} rollout status deployment ${name}
+  kubectl -n ${TOOLS_NAMESPACE} rollout status deployment "${name}"
 }
 
 create_kind_config () {
-  cat > $1 << EOF
+  cat > "${1}" << EOF
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 #networking:
@@ -271,8 +270,8 @@ create_app_cr () {
   config=""
 
   if [[ $config_file != "" ]]; then
-    cm_name=${name}-testing-user-config
-    kubectl -n ${TOOLS_NAMESPACE} create configmap ${cm_name} --from-file=${config_file}
+    cm_name="${name}"-testing-user-config
+    kubectl -n "${TOOLS_NAMESPACE}" create configmap "${cm_name}" --from-file="${config_file}"
     config="userConfig:
     configMap:
       name: \"${cm_name}\"
@@ -331,7 +330,7 @@ wait_for_resource () {
   resource=$2
 
   while true; do
-    kubectl -n $namespace get --no-headers $resource 1>/dev/null 2>&1 && break
+    kubectl -n "${namespace}" get --no-headers "${resource}" 1>/dev/null 2>&1 && break
     info "Waiting for resource ${resource} to be present in cluster..."
     sleep 1
   done
@@ -340,41 +339,41 @@ wait_for_resource () {
 
 create_kind_cluster () {
   if [[ ! -d ${CONFIG_DIR} ]]; then
-    mkdir ${CONFIG_DIR}
+    mkdir "${CONFIG_DIR}"
   fi
 
   if [[ -z $KIND_CONFIG_FILE ]]; then
     KIND_CONFIG_FILE="${CONFIG_DIR}/kind.yaml"
     info "Creating default KinD config file ${KIND_CONFIG_FILE}"
-    create_kind_config ${KIND_CONFIG_FILE}
+    create_kind_config "${KIND_CONFIG_FILE}"
   else
     info "Using provided KinD config file ${KIND_CONFIG_FILE}"
   fi
 
-  kind create cluster --name ${CLUSTER_NAME} --config ${KIND_CONFIG_FILE}
-  kind get kubeconfig --name ${CLUSTER_NAME} > ${KUBECONFIG}
-  kind get kubeconfig --name ${CLUSTER_NAME} --internal > ${KUBECONFIG_I}
+  kind create cluster --name "${CLUSTER_NAME}" --config "${KIND_CONFIG_FILE}"
+  kind get kubeconfig --name "${CLUSTER_NAME}" > "${KUBECONFIG}"
+  kind get kubeconfig --name "${CLUSTER_NAME}" --internal > "${KUBECONFIG_I}"
   info "Cluster created, waiting for basic services to come up"
   kubectl -n kube-system rollout status deployment coredns
 
   # write cluster details to file to run a manual cleanup later if required.
-  echo "export CLUSTER_NAME=${CLUSTER_NAME}" > ${ENV_DETAILS_FILE}
-  echo "export CLUSTER_TYPE=${CLUSTER_TYPE}" >> ${ENV_DETAILS_FILE}
-  if [ $KEEP_AFTER_TEST ]; then
-    echo "export KEEP_AFTER_TEST=${KEEP_AFTER_TEST}" >> ${ENV_DETAILS_FILE}
+  echo "export CLUSTER_NAME=${CLUSTER_NAME}" > "${ENV_DETAILS_FILE}"
+  echo "export CLUSTER_TYPE=${CLUSTER_TYPE}" >> "${ENV_DETAILS_FILE}"
+  if [ "${KEEP_AFTER_TEST}" ]; then
+    echo "export KEEP_AFTER_TEST=${KEEP_AFTER_TEST}" >> "${ENV_DETAILS_FILE}"
   fi
 
-  kubeconfig=$(cat ${KUBECONFIG})
+  kubeconfig="$(cat "${KUBECONFIG}")"
   # create tools namespace
-  kubectl create ns $TOOLS_NAMESPACE
+  kubectl create ns "$TOOLS_NAMESPACE"
 }
 
 delete_kind_cluster () {
   info "Deleting KinD cluster ${CLUSTER_NAME}"
-  kind delete cluster --name ${CLUSTER_NAME}
+  kind delete cluster --name "${CLUSTER_NAME}"
 
   if [[ -f ${ENV_DETAILS_FILE} ]]; then
-    rm ${ENV_DETAILS_FILE}
+    rm "${ENV_DETAILS_FILE}"
   fi
 }
 
@@ -419,7 +418,7 @@ EOF
   # template a kubeconfig based on the created key pair.
   # expects a file path as the second argument
   elif [[ "$1" == "kubeconfig" ]]; then
-  cat > $2 << EOF
+  cat > "${2}" << EOF
 apiVersion: v1
 clusters:
 - cluster:
@@ -448,40 +447,34 @@ update_aws_sec_group () {
 
   info "Getting Security Group ID for cluster ${cluster_id}"
   # get the security group ID for the new cluster
-  SEC_GROUP_ID=$(aws ec2 describe-security-groups --region ${REGION} \
-    --filters Name=tag:giantswarm.io/cluster,Values=${cluster_id} \
+  SEC_GROUP_ID="$(aws ec2 describe-security-groups --region "${REGION}" \
+    --filters Name=tag:giantswarm.io/cluster,Values="${cluster_id}" \
     Name=tag:aws:cloudformation:logical-id,Values=MasterSecurityGroup \
-    | jq -r .SecurityGroups[0].GroupId)
+    | jq -r .SecurityGroups[0].GroupId)"
 
   # check that we actually got a key pair back
-  grep -q "sg-" <<< $SEC_GROUP_ID
-  if [[ "$?" -gt 0 ]]; then
+  if ! grep -q "sg-" <<< "$SEC_GROUP_ID" ; then
     err "Could not find the Security Group ID."
     exit 3
   fi
 
   info "Adding ingress rule for 0.0.0.0/0 to Security Group ${SEC_GROUP_ID}"
   # add a new rule to allow ingress from anywhere on 443
-  aws ec2 authorize-security-group-ingress --region ${REGION} --group-id ${SEC_GROUP_ID} \
-    --protocol tcp --port 443 --cidr 0.0.0.0/0
-
-  if [[ "$?" -gt 0 ]]; then
+  if ! aws ec2 authorize-security-group-ingress --region "${REGION}" --group-id "${SEC_GROUP_ID}" \
+      --protocol tcp --port 443 --cidr 0.0.0.0/0 ; then
     err "Could not add ingress rule to the Security Group."
     exit 3
   fi
 }
 
-
 create_gs_cluster () {
   info "Creating new tenant cluster."
 
   # create a new cluster
-  curl ${GS_API_URL}/v5/clusters/ -X POST \
-    -H "Content-Type: application/json" \
-    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-    -d "$(gen_gs_blob cluster)"
-
-  if [[ "$?" -gt 0 ]]; then
+  if ! curl "${GS_API_URL}"/v5/clusters/ -X POST \
+      -H "Content-Type: application/json" \
+      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
+      -d "$(gen_gs_blob cluster)" ; then
     err "Cluster creation failed."
     exit 3
   fi
@@ -490,9 +483,9 @@ create_gs_cluster () {
   sleep 5
 
   # get the list of clusters
-  _cluster_list=$(curl -s ${GS_API_URL}/v4/clusters/ -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}")
+  _cluster_list="$(curl -s "${GS_API_URL}"/v4/clusters/ -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}")"
   # base64 encode the name to work around spaces
-  _base64_cluster_name=$(echo ${CLUSTER_NAME} | base64)
+  _base64_cluster_name="$(echo "${CLUSTER_NAME}" | base64)"
 
   # loop over the list of clusters to find the ID of our newly-created
   # cluster. this is a little fragile as we could potentially retrieve
@@ -504,13 +497,13 @@ create_gs_cluster () {
     unset _this_cluster
 
     _jq() {
-      echo ${cluster} | base64 --decode | jq -r ${1}
+      echo "${cluster}" | base64 --decode | jq -r "${1}"
     }
 
-    _this_cluster=$(echo $(_jq '.name') | base64)
+    _this_cluster="$(echo "$(_jq '.name')" | base64)"
 
-    if [[ "$_base64_cluster_name" == "$_this_cluster" ]]; then
-      CLUSTER_ID=$(echo $(_jq '.id'))
+    if [[ "${_base64_cluster_name}" == "${_this_cluster}" ]]; then
+      CLUSTER_ID="$(echo "$(_jq '.id')")"
       break
     fi
   done
@@ -521,21 +514,19 @@ create_gs_cluster () {
   fi
 
   # write cluster details to file to run a manual cleanup later if required.
-  echo "export CLUSTER_ID=${CLUSTER_ID}" > ${ENV_DETAILS_FILE}
-  echo "export CLUSTER_TYPE=${CLUSTER_TYPE}" >> ${ENV_DETAILS_FILE}
-  echo "export GS_API_URL=${GS_API_URL}" >> ${ENV_DETAILS_FILE}
-  if [ $KEEP_AFTER_TEST ]; then
-    echo "export KEEP_AFTER_TEST=${KEEP_AFTER_TEST}" >> ${ENV_DETAILS_FILE}
+  echo "export CLUSTER_ID=${CLUSTER_ID}" > "${ENV_DETAILS_FILE}"
+  echo "export CLUSTER_TYPE=${CLUSTER_TYPE}" >> "${ENV_DETAILS_FILE}"
+  echo "export GS_API_URL=${GS_API_URL}" >> "${ENV_DETAILS_FILE}"
+  if [ "${KEEP_AFTER_TEST}" ]; then
+    echo "export KEEP_AFTER_TEST=${KEEP_AFTER_TEST}" >> "${ENV_DETAILS_FILE}"
   fi
 
   info "Creating nodepool for cluster ${CLUSTER_ID}"
   # create a nodepool
-  curl ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/nodepools/ -X POST \
-    -H "Content-Type: application/json" \
-    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-    -d "$(gen_gs_blob nodepool)"
-
-  if [[ "$?" -gt 0 ]]; then
+  if ! curl "${GS_API_URL}"/v5/clusters/"${CLUSTER_ID}"/nodepools/ -X POST \
+      -H "Content-Type: application/json" \
+      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
+      -d "$(gen_gs_blob nodepool)" ; then
     err "Nodepool creation failed."
     exit 3
   fi
@@ -543,7 +534,8 @@ create_gs_cluster () {
   # wait for the cluster to be ready
   # declare a counter
   _counter=0
-  until [ `curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/ | jq .conditions | grep -i "created" | wc -l` -gt 0 ]; do
+  # shellcheck disable=SC2126
+  until [ $(curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" "${GS_API_URL}"/v5/clusters/"${CLUSTER_ID}"/ | jq .conditions | grep -i "created" | wc -l) -gt 0 ]; do
     # exit if the cluster hasn't been created in 30 minutes
     if [[ "$_counter" -gt 60 ]]; then
       err "Cluster not created after 30 minutes."
@@ -558,36 +550,35 @@ create_gs_cluster () {
 
   info "Creating key-pair for tenant cluster access."
   # create a key pair (must be stored directly in a variable)
-  _key_pair=$(curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/key-pairs/ -X POST \
+  _key_pair=$(curl "${GS_API_URL}"/v4/clusters/"${CLUSTER_ID}"/key-pairs/ -X POST \
     -H "Content-Type: application/json" \
     -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
     -d "$(gen_gs_blob keypair)")
 
   # check that we actually got a key pair back
-  grep -q "certificate_authority_data" <<< $_key_pair
-  if [[ "$?" -gt 0 ]]; then
+  if ! grep -q "certificate_authority_data" <<< "${_key_pair}"; then
     err "Key pair creation failed."
     exit 3
   fi
 
   # parse required fields from key pair creation response in order to
   # create a kubeconfig for the tenant cluster
-  TC_API_URI=$(curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/ | jq -r .api_endpoint)
-  CA_CERT=$(echo $_key_pair | jq -r '.certificate_authority_data | @base64')
-  CLIENT_CERT=$(echo $_key_pair | jq -r '.client_certificate_data | @base64')
-  CLIENT_KEY=$(echo $_key_pair | jq -r '.client_key_data | @base64')
+  TC_API_URI=$(curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" "${GS_API_URL}"/v5/clusters/"${CLUSTER_ID}"/ | jq -r .api_endpoint)
+  CA_CERT=$(echo "${_key_pair}" | jq -r '.certificate_authority_data | @base64')
+  CLIENT_CERT=$(echo "${_key_pair}" | jq -r '.client_certificate_data | @base64')
+  CLIENT_KEY=$(echo "${_key_pair}" | jq -r '.client_key_data | @base64')
 
   # align config with kind clusters
   if [[ ! -d ${CONFIG_DIR} ]]; then
-    mkdir ${CONFIG_DIR}
+    mkdir "${CONFIG_DIR}"
   fi
 
   info "Templating kubeconfig out to ${KUBECONFIG}"
   # create the kubeconfig
-  gen_gs_blob kubeconfig ${KUBECONFIG}
+  gen_gs_blob kubeconfig "${KUBECONFIG}"
 
   # update Security Group to allow access
-  update_aws_sec_group ${CLUSTER_ID}
+  update_aws_sec_group "${CLUSTER_ID}"
 
   # make sure the ingress rule has taken effect before we attempt to connect
   info "Sleeping for 30 seconds to ensure ingress rule has been applied."
@@ -596,7 +587,7 @@ create_gs_cluster () {
   info "Testing tenant cluster by listing pods in 'kube-system' namespace."
   # test connectivity
   kubectl get pods -n kube-system
-  if [[ "$?" -gt 0 ]]; then
+  if ! kubectl get pods -n kube-system; then
     err "Could not list pods in the kube-system namespace."
     exit 3
   fi
@@ -604,10 +595,8 @@ create_gs_cluster () {
 
 delete_gs_cluster () {
   info "Deleting Giant Swarm tenant cluster ${CLUSTER_ID}"
-  curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/ -X DELETE \
-    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}"
-
-  if [[ "$?" -gt 0 ]]; then
+  if ! curl "${GS_API_URL}"/v4/clusters/"${CLUSTER_ID}"/ -X DELETE \
+      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}"; then
     err "Cluster deletion failed - please investigate."
     exit 3
   fi
@@ -642,7 +631,8 @@ force_cleanup () {
   fi
 
   # pick up cluster details from previous run.
-  source ${ENV_DETAILS_FILE}
+  # shellcheck disable=SC1090
+  source "${ENV_DETAILS_FILE}"
 
   if [[ $KEEP_AFTER_TEST -eq 1 ]]; then
     warn "--keep-after-test was set, cluster will not be cleaned up even though --force-cleanup was set."
@@ -657,13 +647,13 @@ force_cleanup () {
   fi
 
   # call for cluster deletion using the existing functions.
-  delete_cluster ${CLUSTER_TYPE}
+  delete_cluster "${CLUSTER_TYPE}"
 }
 
 delete_cluster () {
   cluster_type=$1
 
-  case $cluster_type in
+  case ${cluster_type} in
     "kind")
       delete_kind_cluster
       ;;
@@ -682,7 +672,7 @@ start_tools () {
 
   # we need to wait for the namespace to be created for us in GS clusters.
   _counter=0
-  until kubectl get ns | grep -q ${TOOLS_NAMESPACE}; do
+  until kubectl get ns | grep -q "${TOOLS_NAMESPACE}"; do
     if [[ "$_counter" -gt 30 ]]; then
       err "namespace: ${TOOLS_NAMESPACE} not created after 5 minutes."
       exit 3
@@ -696,33 +686,33 @@ start_tools () {
   unset _counter
 
   info "Deploying \"chart-museum\""
-  chart_museum_deploy ${cluster_type}
+  chart_museum_deploy "${cluster_type}"
 
   # deploy app-operator to all cluster types
   info "Deploying \"app-operator\""
-  kubectl -n ${TOOLS_NAMESPACE} create serviceaccount appcatalog
-  kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=${TOOLS_NAMESPACE}:appcatalog
+  kubectl -n "${TOOLS_NAMESPACE}" create serviceaccount appcatalog
+  kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount="${TOOLS_NAMESPACE}":appcatalog
   # tenant clusters have a default deny-all network policy which breaks app-operator
-  if [[ "$cluster_type" == "giantswarm" ]]; then
+  if [[ "${cluster_type}" == "giantswarm" ]]; then
     create_app_operator_netpol
   fi
-  kubectl -n ${TOOLS_NAMESPACE} run app-operator --serviceaccount=appcatalog -l app=app-operator --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.incluster="true"
+  kubectl -n "${TOOLS_NAMESPACE}" run app-operator --serviceaccount=appcatalog -l app=app-operator --image=quay.io/giantswarm/app-operator:${APP_OPERATOR_VERSION_TAG} -- daemon --service.kubernetes.incluster="true"
 
   # only deploy chart-operator to kind clusters
-  if [[ "$cluster_type" == "kind" ]]; then
+  if [[ "${cluster_type}" == "kind" ]]; then
     info "Deploying \"chart-operator\""
-    kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog -l app=chart-operator --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="true"
+    kubectl -n "${TOOLS_NAMESPACE}" run chart-operator --serviceaccount=appcatalog -l app=chart-operator --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="true"
   fi
 
   info "Waiting for app-operator to come up"
-  kubectl -n ${TOOLS_NAMESPACE} wait --for=condition=Ready pods -l app=app-operator
+  kubectl -n "${TOOLS_NAMESPACE}" wait --for=condition=Ready pods -l app=app-operator
 
   # we may have to wait for the deployment to be created in a GS cluster, otherwise
   # the following 'kubectl wait' will fail
   _counter=0
-  until kubectl -n ${TOOLS_NAMESPACE} get pods -l app=chart-operator 2> /dev/null | grep -q chart-operator; do
+  until kubectl -n "${TOOLS_NAMESPACE}" get pods -l app=chart-operator 2> /dev/null | grep -q chart-operator; do
     # timeout after 10 minutes
-    if [[ "$_counter" -gt 60 ]]; then
+    if [[ "${_counter}" -gt 60 ]]; then
       err "chart-operator not running after 10 minutes."
       exit 3
     fi
@@ -735,12 +725,12 @@ start_tools () {
   unset _counter
 
   info "Waiting for chart-operator to become ready (times out after 120s)"
-  kubectl -n ${TOOLS_NAMESPACE} wait --timeout=120s --for=condition=Ready pods -l app=chart-operator
+  kubectl -n "${TOOLS_NAMESPACE}" wait --timeout=120s --for=condition=Ready pods -l app=chart-operator
 
   info "Waiting for AppCatalog/App/Chart CRDs to be registered with API server"
-  wait_for_resource ${TOOLS_NAMESPACE} crd/appcatalogs.application.giantswarm.io
-  wait_for_resource ${TOOLS_NAMESPACE} crd/apps.application.giantswarm.io
-  wait_for_resource ${TOOLS_NAMESPACE} crd/charts.application.giantswarm.io
+  wait_for_resource "${TOOLS_NAMESPACE}" crd/appcatalogs.application.giantswarm.io
+  wait_for_resource "${TOOLS_NAMESPACE}" crd/apps.application.giantswarm.io
+  wait_for_resource "${TOOLS_NAMESPACE}" crd/charts.application.giantswarm.io
 
   info "Creating AppCatalog CR for \"chart-museum\""
   create_app_catalog_cr
@@ -754,11 +744,11 @@ validate_chart () {
   fi
 
   info "Taking backups of 'Chart.yaml' and 'values.yaml' before 'architect' alters them"
-  cp helm/${chart_name}/Chart.yaml helm/${chart_name}/Chart.yaml.back
-  cp helm/${chart_name}/values.yaml helm/${chart_name}/values.yaml.back
+  cp helm/"${chart_name}"/Chart.yaml helm/"${chart_name}"/Chart.yaml.back
+  cp helm/"${chart_name}"/values.yaml helm/"${chart_name}"/values.yaml.back
 
   info "Validating chart \"${chart_name}\" with architect"
-  docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} helm template --validate --dir helm/${chart_name}
+  docker run -it --rm -v "$(pwd)":/workdir -w /workdir quay.io/giantswarm/architect:"${ARCHITECT_VERSION_TAG}" helm template --validate --dir helm/"${chart_name}"
 
   info "Linting chart \"${chart_name}\" with \"ct\""
   CT_DOCKER_RUN="docker run -it --rm -v $(pwd):/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG}"
@@ -779,13 +769,13 @@ build_chart () {
   chart_name=$1
 
   info "Packaging chart \"${chart_name}\" with helm"
-  chart_log=$(helm package helm/$chart_name)
-  echo $chart_log
+  chart_log=$(helm package helm/"${chart_name}")
+  echo "${chart_log}"
   CHART_FILE_NAME=${chart_log##*/}
 
   info "Restoring backups of 'Chart.yaml' and 'values.yaml' to revert changes 'architect' did."
-  mv helm/${chart_name}/Chart.yaml.back helm/${chart_name}/Chart.yaml
-  mv helm/${chart_name}/values.yaml.back helm/${chart_name}/values.yaml
+  mv helm/"${chart_name}"/Chart.yaml.back helm/"${chart_name}"/Chart.yaml
+  mv helm/"${chart_name}"/values.yaml.back helm/"${chart_name}"/values.yaml
 }
 
 upload_chart () {
@@ -795,7 +785,7 @@ upload_chart () {
   info "Uploading chart ${CHART_FILE_NAME} to chart-museum..."
   # we need to port-foward to the remote cluster to upload the chart.
   if [[ "$cluster_type" == "giantswarm" ]]; then
-    kubectl port-forward -n ${TOOLS_NAMESPACE} service/chart-museum 8080:8080 &
+    kubectl port-forward -n "${TOOLS_NAMESPACE}" service/chart-museum 8080:8080 &
     sleep 5
   fi
   curl --data-binary "@${CHART_FILE_NAME}" http://localhost:8080/api/charts
@@ -806,7 +796,7 @@ create_app () {
   config_file=$2
 
   info "Creating 'app CR' with version=${CHART_VERSION} and name=${name}"
-  create_app_cr $name $CHART_VERSION $config_file
+  create_app_cr "${name}" "${CHART_VERSION}" "${config_file}"
 }
 
 verify_helm () {
@@ -816,13 +806,13 @@ verify_helm () {
   expected="DEPLOYED"
   while true; do
     set +e
-    status_out=$(helm --tiller-namespace giantswarm status ${chart_name} 2>&1 | head -n 3 | grep "STATUS:")
+    status_out=$(helm --tiller-namespace giantswarm status "${chart_name}" 2>&1 | head -n 3 | grep "STATUS:")
     out_code=$?
     set -e
     status=${status_out##* }
-    if [[ $out_code != 0 ]]; then
+    if [[ $out_code -gt 0 ]]; then
       info "Helm is not ready, exit code: $out_code"
-    elif [[ $status != $expected ]]; then
+    elif [[ ${status} != "${expected}" ]]; then
       info "Deployment ${chart_name} is not ${expected}, current status is $status"
     else
       info "Deployment ${chart_name} is ${expected}!"
@@ -866,11 +856,12 @@ run_pytest () {
   if [[ "${CLUSTER_TYPE}" == "kind" ]]; then
     KUBECONFIG=${KUBECONFIG_I}
   fi
+  # shellcheck disable=SC2016
   pipenv_cmd='PATH=$HOME/.local/bin:$PATH pipenv sync && PATH=$HOME/.local/bin:$PATH pipenv run pytest --full-trace --verbosity=8 .'
   docker run -it --rm \
     -v ${TMP_DIR}/.local:/root/.local \
     -v ${TMP_DIR}/.cache:/root/.cache \
-    -v `pwd`:/chart -w /chart \
+    -v "$(pwd)":/chart -w /chart \
     -v ${KUBECONFIG}:/kube.config:ro \
     python:${PYTHON_VERSION_TAG} sh \
     -c "pip install pipenv \
@@ -886,7 +877,7 @@ run_pytest () {
 run_pre_test_hook () {
   chart_name=$1
 
-  if [[ -z ${OVERRIDEN_PRE_SCRIPT_PATH} ]]; then
+  if [[ -z "${OVERRIDEN_PRE_SCRIPT_PATH}" ]]; then
     script_path="helm/${chart_name}/${PRE_TEST_SCRIPT_PATH}"
   else
     script_path="${OVERRIDEN_PRE_SCRIPT_PATH}"
@@ -905,19 +896,19 @@ run_tests_for_single_config () {
   chart_name=$1
   config_file=$2
 
-  create_cluster ${CLUSTER_TYPE}
-  start_tools ${CLUSTER_TYPE}
-  CHART_VERSION=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
-  upload_chart ${chart_name} ${CLUSTER_TYPE}
-  run_pre_test_hook ${chart_name}
-  create_app ${chart_name} $config_file
-  verify_helm ${chart_name}
-  run_pytest ${chart_name} $config_file
-  if [ $KEEP_AFTER_TEST ]; then
+  create_cluster "${CLUSTER_TYPE}"
+  start_tools "${CLUSTER_TYPE}"
+  CHART_VERSION=$(docker run -it --rm -v "$(pwd)":/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
+  upload_chart "${chart_name}" "${CLUSTER_TYPE}"
+  run_pre_test_hook "${chart_name}"
+  create_app "${chart_name}" "${config_file}"
+  verify_helm "${chart_name}"
+  run_pytest "${chart_name}" "${config_file}"
+  if [[ -n "${KEEP_AFTER_TEST}" ]]; then
     warn "--keep-after-test was used, I'm stopping next test config files runs (if any) to let you investigate the cluster"
     exit 0
   else
-    delete_cluster $CLUSTER_TYPE
+    delete_cluster "${CLUSTER_TYPE}"
   fi
 
   extra=""
@@ -941,6 +932,7 @@ print_help () {
   echo "  --force-cleanup                 using force cleanup allows the script to be run independently"
   echo "                                  of the main job. This allows it to clean up any dangling resources"
   echo "                                  left by a failure mid-job. Must be run in a CircleCI job with the"
+  # shellcheck disable=2006
   echo "                                  `when: on_fail` value set. If the cluster is a GS cluster then the"
   echo "                                  auth token must also be provided with '-a'."
   echo "  -k, --keep-after-test           after first test is successful, abort and keep"
@@ -985,7 +977,7 @@ print_help () {
 }
 
 parse_args () {
-  args=$@
+#  args=$@
 
   while [[ $# -gt 0 ]]; do
     case $1 in
@@ -1067,13 +1059,14 @@ parse_args () {
   CLUSTER_NAME=${CLUSTER_NAME:-$DEFAULT_CLUSTER_NAME}
   # generate and apply a random suffix to the cluster name to avoid cluster name
   # collisions when spawning a TC.
+  # shellcheck disable=SC2002
   CLUSTER_NAME_SUFFIX=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)
   CLUSTER_NAME=${CLUSTER_NAME}-${CLUSTER_NAME_SUFFIX}
 
   CLUSTER_TYPE=${CLUSTER_TYPE:-$DEFAULT_CLUSTER_TYPE}
 
   # don't parse any other flags as we don't need them for the cleanup stage.
-  if [[ ! -z ${FORCE_CLEANUP} ]]; then
+  if [[ -n "${FORCE_CLEANUP}" ]]; then
     force_cleanup
   fi
 
@@ -1088,7 +1081,7 @@ parse_args () {
   fi
 
   if [[ "$CLUSTER_TYPE" == "kind" ]]; then
-    if [[ ! -z $KIND_CONFIG_FILE && ! -f $KIND_CONFIG_FILE ]]; then
+    if [[ -n "${KIND_CONFIG_FILE}" && ! -f "${KIND_CONFIG_FILE}" ]]; then
       err "KinD config file '$KIND_CONFIG_FILE' was specified, but doesn't exist."
       exit 3
     fi
@@ -1110,7 +1103,7 @@ parse_args () {
     SCALING_MAX=${SCALING_MAX:-$DEFAULT_SCALING_MAX}
 
     # infer the region from the AZ (trims last character).
-    REGION=$(echo ${AVAILABILITY_ZONE} | rev | cut -c 2- | rev)
+    REGION=$(echo "${AVAILABILITY_ZONE}" | rev | cut -c 2- | rev)
 
     info "Testing with release $GS_RELEASE against $GS_API_URL in AZ $AVAILABILITY_ZONE."
     info "Cluster will scale between $SCALING_MIN and $SCALING_MAX nodes."
@@ -1142,23 +1135,24 @@ test_main () {
   chart_name=$1
 
   set +e
-  ls helm/${chart_name}/${TEST_CONFIG_FILES_SUBPATH} 1>/dev/null 2>&1
+  ls helm/"${chart_name}"/"${TEST_CONFIG_FILES_SUBPATH}" 1>/dev/null 2>&1
   out=$?
   set -e
-  if [[ $out > 0 ]]; then
+  if [[ ${out} -gt 0 ]]; then
     info "No sample configuration files found for the tested chart. Running single test without any ConfigMap."
-    run_tests_for_single_config ${chart_name} ""
+    run_tests_for_single_config "${chart_name}" ""
   else
-    for file in $(ls helm/${chart_name}/${TEST_CONFIG_FILES_SUBPATH}); do
-      info "Starting test run for configuration file $file"
-      run_tests_for_single_config ${chart_name} "$file"
+    # shellcheck disable=SC2045
+    for file in $(ls helm/"${chart_name}"/"${TEST_CONFIG_FILES_SUBPATH}"); do
+      info "Starting test run for configuration file ${file}"
+      run_tests_for_single_config "${chart_name}" "${file}"
     done
   fi
 }
 
-parse_args $@
+parse_args "$@"
 info "kube-app-testing v${KAT_VERSION}"
 validate_tools
-validate_chart ${CHART_NAME}
-build_chart ${CHART_NAME}
-test_main ${CHART_NAME}
+validate_chart "${CHART_NAME}"
+build_chart "${CHART_NAME}"
+test_main "${CHART_NAME}"
