@@ -1,8 +1,8 @@
 # kube-app-testing
 
-This script builds and tests a helm chart using a kind cluster. The only required
-parameter is `[chart name]`, which needs to be a name of the chart which is present
-in directory `helm/`.
+This script builds and tests a helm chart using either a KinD cluster, or a full Giant Swarm tenant
+cluster. The only required parameter is `[chart name]`, which needs to be a name of the chart which
+ is present in directory `helm/`.
 
 ## Installation
 
@@ -57,6 +57,7 @@ Following tools must be installed in the system:
 - kind
 - helm
 - curl
+- jq
 
 ## Development setup for functional tests with python
 
@@ -116,6 +117,59 @@ python tests, follow this steps:
       --values-file [""|../../[app]/ci/[config_file.yaml]
    ```
 
-## Integration with circleci
+## Integration with CircleCI
 
-Sample integration config can be found in [giantswarm-todo-app](https://github.com/giantswarm/giantswarm-todo-app/blob/f45fac5bd107c193d6e82a4da81e8164fa6018ea/.circleci/config.yml#L40).
+Integration with CircleCI requires a job definition similar to the one below. Note that the last step in the job
+is important to ensure any dangling resources are removed if a run fails midway through.
+
+```yaml
+jobs:
+  run_kat_tests:
+    machine:
+      image: ubuntu-1604:201903-01
+    working_directory:
+      ~/giantswarm-todo
+    steps:
+      - restore_cache:
+          key: repo-{{ .Environment.CIRCLE_SHA1 }}-<< pipeline.git.tag >>
+      - run: pyenv versions
+      - run: pyenv global 3.7.0
+      - run: python --version
+      - run: pip install pipenv aws-shell
+      - run: curl -Lo /tmp/kind "https://github.com/kubernetes-sigs/kind/releases/download/v0.7.0/kind-$(uname)-amd64"
+      - run: chmod +x /tmp/kind
+      - run: curl -Lo /tmp/helm.tar.gz https://get.helm.sh/helm-v2.16.5-linux-amd64.tar.gz
+      - run: tar zxf /tmp/helm.tar.gz -C /tmp && mv /tmp/linux-amd64/helm /tmp/helm
+      - run: /tmp/helm init -c
+      - run: curl -Lo /tmp/kind-app-testing.sh -q https://raw.githubusercontent.com/giantswarm/kube-app-testing/master/kube-app-testing.sh
+      - run: chmod +x /tmp/kind-app-testing.sh
+      - run: curl -Lo /tmp/kubectl https://storage.googleapis.com/kubernetes-release/release/v1.18.0/bin/linux/amd64/kubectl
+      - run: chmod +x /tmp/kubectl
+      - run: PATH="/tmp:$PATH" kind-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name ci-<insert-app-name-here> -a ${GS_API_KEY} -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE} --giantswarm-api-url ${GS_API_URL}
+      - store_test_results:
+          path: test-results
+      - store_artifacts:
+          path: test-results
+      - run:
+          name: Cleanup resources
+          command: PATH="/tmp:$PATH" kind-app-testing.sh -a ${GS_API_KEY} --force-cleanup
+          when: on_fail
+
+workflows:
+  version: 2
+  build:
+    jobs:
+      - run_kat_tests:
+          requires:
+            - <add any jobs which must run first here>
+          filters:
+            tags:
+              only: /^v.*/
+```
+
+Requirements:
+
+* AWS:
+  * IAM user with `ec2:AuthorizeSecurityGroupIngress` and `ec2:DescribeSecurityGroups` **in the tenant cluster account**.
+  * IAM user's access key & key ID must be added as environment variables to the CircleCI project. They should be called `AWS_ACCESS_KEY_ID` & `AWS_SECRET_ACCESS_KEY`.
+  * The AWS CLI is required when testing against AWS.
