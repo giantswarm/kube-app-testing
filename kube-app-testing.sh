@@ -965,7 +965,10 @@ print_help () {
   echo "  --giantswarm-api-url            URL of the Giantswarm installation API, defaults to Gauss."
   echo "                                  e.g. 'https://api.g8s.gauss.eu-central-1.aws.gigantic.io'"
   echo "  --min-scaling                   minimum number of nodes (applies to GS clusters only)"
-  echo "  --max-scaling                   maximum number of nodes (applies to GS clusters only)"
+  echo "  --max-scaling                   maximum number of nodes (applies to GS clusters only). If the max"
+  echo "                                  value is set to _less_ than the min value then the provided max will"
+  echo "                                  be ignored and max will be set to the same as min, resulting in a"
+  echo "                                  statically-sized nodepool"
   echo ""
   echo "Requirements: kind, helm, curl, jq."
   echo ""
@@ -1108,6 +1111,11 @@ parse_args () {
     AVAILABILITY_ZONE=${AVAILABILITY_ZONE:-$DEFAULT_AVAILABILITY_ZONE}
     SCALING_MIN=${SCALING_MIN:-$DEFAULT_SCALING_MIN}
     SCALING_MAX=${SCALING_MAX:-$DEFAULT_SCALING_MAX}
+
+    if [[ $SCALING_MIN -gt $SCALING_MAX ]]; then
+      info "Min scaling value is greater than the max scaling value ("${SCALING_MIN}" > "${SCALING_MAX}"), setting max scaling to "${SCALING_MIN}"."
+      SCALING_MAX=${SCALING_MIN}
+    fi
 
     # infer the region from the AZ (trims last character).
     REGION=$(echo ${AVAILABILITY_ZONE} | rev | cut -c 2- | rev)
