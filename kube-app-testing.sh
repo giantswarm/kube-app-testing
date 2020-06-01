@@ -455,6 +455,27 @@ update_aws_sec_group () {
     exit 3
   fi
 
+  # loop over the rules - each rule dict must be base64 encoded as
+  # whitespace breaks the looping
+  for rule in $(echo "${SECGROUP_DATA}" | jq -r '.SecurityGroups[0].IpPermissions[] | @base64'); do
+    # get the port for this rule
+    _FROM_PORT=$(echo "${rule}" | base64 -d | jq -r .FromPort)
+
+    # only examine it if it is the K8S API rule
+    if [[ $_FROM_PORT -eq 443 ]]; then
+      # get the allowed IP range to this port
+      _CIDR_IP=$(echo "${rule}" | base64 -d | jq -r .IpRanges[0].CidrIp)
+      # if the port is already open to the world then return from the function
+      if [[ "${_CIDR_IP}" == "0.0.0.0/0" ]]; then
+        echo "API ingress already allowed from \"0.0.0.0/0\""
+        return
+      fi
+    fi
+  done
+
+  # rule doesn't exist or isn't open to the world, so we need to create a new rule
+  SEC_GROUP_ID=$(jq .SecurityGroups[0].GroupId <<< ${SECGROUP_DATA})
+
   info "Adding ingress rule for 0.0.0.0/0 to Security Group ${SEC_GROUP_ID}"
   # add a new rule to allow ingress from anywhere on 443
   aws ec2 authorize-security-group-ingress --region ${REGION} --group-id ${SEC_GROUP_ID} \
