@@ -28,7 +28,7 @@ PYTHON_TESTS_DIR="test/kat"
 
 # gs cluster config
 DEFAULT_PROVIDER="aws"
-DEFAULT_GS_API_URL="https://api.g8s.gauss.eu-central-1.aws.gigantic.io"
+DEFAULT_GS_API_URL="https://api.g8s.gorilla.eu-central-1.aws.gigantic.io"
 DEFAULT_REGION="eu-central-1"
 DEFAULT_AVAILABILITY_ZONE="eu-central-1a"
 DEFAULT_SCALING_MIN=1
