@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.3.9
+KAT_VERSION=0.3.10
 
 # config
 CONFIG_DIR=/tmp/kat_test
@@ -842,6 +842,11 @@ run_pytest () {
   chart_name=$1
   config_file=$2
 
+  if [[ $SKIP_PYTEST -eq 1 ]]; then
+    info "Pytest skip was requested."
+    return
+  fi
+
   if [[ ! -d "$PYTHON_TESTS_DIR" ]]; then
     info "No pytest tests found in \"$PYTHON_TESTS_DIR\", skipping"
     return
@@ -938,6 +943,7 @@ print_help () {
   echo "  -h, --help                      display this help screen"
   echo "  -v, --validate-only             only validate and lint the chart using 'chart-testing'"
   echo "                                  (runs tests that don't require any cluster)."
+  echo "  -s, --skip-pytest               skip running the pytest test suite, even if present."
   echo "  --force-cleanup                 using force cleanup allows the script to be run independently"
   echo "                                  of the main job. This allows it to clean up any dangling resources"
   echo "                                  left by a failure mid-job. Must be run in a CircleCI job with the"
@@ -1014,6 +1020,10 @@ parse_args () {
         ;;
       -v|--validate-only)
         VALIDATE_ONLY=1
+        shift 1
+        ;;
+      -s|--skip-pytest)
+        SKIP_PYTEST=1
         shift 1
         ;;
       -t|--cluster-type)
