@@ -446,17 +446,12 @@ EOF
 update_aws_sec_group () {
   cluster_id=$1
 
-  info "Getting Security Group ID for cluster ${cluster_id}"
-  # get the security group ID for the new cluster
-  SEC_GROUP_ID=$(aws ec2 describe-security-groups --region ${REGION} \
-    --filters Name=tag:giantswarm.io/cluster,Values=${cluster_id} \
-    Name=tag:aws:cloudformation:logical-id,Values=MasterSecurityGroup \
-    | jq -r .SecurityGroups[0].GroupId)
-
-  # check that we actually got a key pair back
-  grep -q "sg-" <<< $SEC_GROUP_ID
-  if [[ "$?" -gt 0 ]]; then
-    err "Could not find the Security Group ID."
+  info "Getting Security Group details for cluster ${cluster_id}"
+  # get the security group details for the new cluster's K8S API ingress
+  if ! SECGROUP_DATA=$(aws ec2 describe-security-groups --region ${REGION} \
+      --filters Name=tag:giantswarm.io/cluster,Values=${cluster_id} \
+      Name=tag:aws:cloudformation:logical-id,Values=MasterSecurityGroup) ; then
+    err "Error describing the Security Group."
     exit 3
   fi
 
