@@ -849,7 +849,7 @@ verify_helm () {
       info "Deployment ${chart_name} is ${expected}!"
       break
     fi
-    sleep 1
+    sleep 5
     timer=$((timer+1))
     if [[ $timer -gt $MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC ]]; then
       err "Deployment ${chart_name} failed to become ${expected} in ${MAX_WAIT_FOR_HELM_STATUS_DEPLOY_SEC} seconds."
