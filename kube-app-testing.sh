@@ -414,6 +414,19 @@ EOF
   }
 }
 EOF
+  # payload for labelling a cluster
+  elif [[ "${1}" == "addlabels" ]]; then
+  cat <<EOF
+{
+  "labels": {
+    "circleci-branch": "${CIRCLE_BRANCH}",
+    "circleci-build-num": "${CIRCLE_BUILD_NUM}",
+    "github-repo": "${CIRCLE_PROJECT_REPONAME}",
+    "github-user": "${CIRCLE_PROJECT_USERNAME}",
+    "owner": "ci"
+  }
+}
+EOF
   # payload for creating a client key pair
   elif [[ "$1" == "keypair" ]]; then
   cat <<EOF
