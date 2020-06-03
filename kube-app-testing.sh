@@ -414,6 +414,19 @@ EOF
   }
 }
 EOF
+  # payload for labelling a cluster
+  elif [[ "${1}" == "addlabels" ]]; then
+  cat <<EOF
+{
+  "labels": {
+    "circleci-branch": "${CIRCLE_BRANCH}",
+    "circleci-build-num": "${CIRCLE_BUILD_NUM}",
+    "github-repo": "${CIRCLE_PROJECT_REPONAME}",
+    "github-user": "${CIRCLE_PROJECT_USERNAME}",
+    "owner": "ci"
+  }
+}
+EOF
   # payload for creating a client key pair
   elif [[ "$1" == "keypair" ]]; then
   cat <<EOF
@@ -497,49 +510,18 @@ create_gs_cluster () {
   info "Creating new tenant cluster."
 
   # create a new cluster
-  curl ${GS_API_URL}/v5/clusters/ -X POST \
-    -H "Content-Type: application/json" \
-    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-    -d "$(gen_gs_blob cluster)"
-
-  if [[ "$?" -gt 0 ]]; then
+  if ! CLUSTER_DETAILS=$(curl ${GS_API_URL}/v5/clusters/ -X POST \
+      -H "Content-Type: application/json" \
+      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
+      -d "$(gen_gs_blob cluster)") ; then
     err "Cluster creation failed."
     exit 3
   fi
 
+  CLUSTER_ID=$(jq -r .id <<< "${CLUSTER_DETAILS}")
+
   # make sure we're not too fast for the API
   sleep 5
-
-  # get the list of clusters
-  _cluster_list=$(curl -s ${GS_API_URL}/v4/clusters/ -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}")
-  # base64 encode the name to work around spaces
-  _base64_cluster_name=$(echo ${CLUSTER_NAME} | base64)
-
-  # loop over the list of clusters to find the ID of our newly-created
-  # cluster. this is a little fragile as we could potentially retrieve
-  # the ID of another cluster if it has the same name.
-  #
-  # we have to pass cluster dictionaries around as base64 encoded objects
-  # to avoid issues with whitespace characters.
-  for cluster in $(echo "${_cluster_list}" | jq -r '.[] | @base64'); do
-    unset _this_cluster
-
-    _jq() {
-      echo ${cluster} | base64 --decode | jq -r ${1}
-    }
-
-    _this_cluster=$(echo $(_jq '.name') | base64)
-
-    if [[ "$_base64_cluster_name" == "$_this_cluster" ]]; then
-      CLUSTER_ID=$(echo $(_jq '.id'))
-      break
-    fi
-  done
-
-  if [[ -z $CLUSTER_ID ]]; then
-    err "Cluster name matching '${CLUSTER_NAME}' could not be found."
-    exit 3
-  fi
 
   # write cluster details to file to run a manual cleanup later if required.
   echo "export CLUSTER_ID=${CLUSTER_ID}" > ${ENV_DETAILS_FILE}
@@ -559,6 +541,16 @@ create_gs_cluster () {
   if [[ "$?" -gt 0 ]]; then
     err "Nodepool creation failed."
     exit 3
+  fi
+
+  info "Adding labels to cluster ${CLUSTER_ID}"
+  # label the cluster with some useful information. failure to label a cluster
+  # doesn't cause a job failure
+  if ! curl ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/labels/ -X PUT \
+      -H "Content-Type: application/json" \
+      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
+      -d "$(gen_gs_blob addlabels)" ; then
+    err "Could not label cluster, however the job will continue."
   fi
 
   # wait for the cluster to be ready
