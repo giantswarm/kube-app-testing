@@ -543,6 +543,16 @@ create_gs_cluster () {
     exit 3
   fi
 
+  info "Adding labels to cluster ${CLUSTER_ID}"
+  # label the cluster with some useful information. failure to label a cluster
+  # doesn't cause a job failure
+  if ! curl ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/labels/ -X PUT \
+      -H "Content-Type: application/json" \
+      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
+      -d "$(gen_gs_blob addlabels)" ; then
+    err "Could not label cluster, however the job will continue."
+  fi
+
   # wait for the cluster to be ready
   # declare a counter
   _counter=0
