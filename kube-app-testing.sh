@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.3.11
+KAT_VERSION=0.4.1
 
 # config
 CONFIG_DIR=/tmp/kat_test
@@ -950,17 +950,19 @@ print_help () {
   echo ""
   echo "Usage:"
   echo ""
-  echo "  ${0##*/} [OPTION...] -c [chart name in helm/ dir]"
+  echo "  ${0##*/} [OPTION...] -j|-c [chart name in helm/ dir]"
   echo ""
   echo "Options:"
   echo "  -h, --help                      display this help screen"
   echo "  -v, --validate-only             only validate and lint the chart using 'chart-testing'"
   echo "                                  (runs tests that don't require any cluster)."
+  echo "  -j, --just-cluster              just create the cluster with tools installed; ignore everything"
+  echo "                                  related to testing and building the chart. Ignores '-c'."
   echo "  -s, --skip-pytest               skip running the pytest test suite, even if present."
   echo "  --force-cleanup                 using force cleanup allows the script to be run independently"
   echo "                                  of the main job. This allows it to clean up any dangling resources"
   echo "                                  left by a failure mid-job. Must be run in a CircleCI job with the"
-  echo "                                  `when: on_fail` value set. If the cluster is a GS cluster then the"
+  echo "                                  'when: on_fail' value set. If the cluster is a GS cluster then the"
   echo "                                  auth token must also be provided with '-a'."
   echo "  -k, --keep-after-test           after first test is successful, abort and keep"
   echo "                                  the test cluster running. If this is provided then '--force-cleanup'"
@@ -991,9 +993,9 @@ print_help () {
   echo ""
   echo "Requirements: kind, helm, curl, jq."
   echo ""
-  echo "This script builds and tests a helm chart using a dedicated cluster. The only required"
-  echo "parameter is [chart name], which needs to be a name of the chart and also a directory"
-  echo "name in the \"helm/\" directory. If there are YAML files present in the directory"
+  echo "In the '-c' mode, this script builds and tests a helm chart using a dedicated cluster."
+  echo "The only required parameter is [chart name], which needs to be a name of the chart and "
+  echo "also a directory name in the \"helm/\" directory. If there are YAML files present in the directory"
   echo "helm/[chart name]/ci\", a full test starting with creation of a new clean cluster"
   echo "will be executed for each one of them".
   echo "If there's a file \"helm/[chart name]/si/pre-test-hook.sh\", it will be executed after"
@@ -1004,6 +1006,9 @@ print_help () {
   echo "The last (and optional) step is to execute functional test. If the directory"
   echo "\"${PYTHON_TESTS_DIR}\" is present in the top level directory, the command \"pipenv run pytest\""
   echo "is executed as the last step."
+  echo ""
+  echo "In the '-j' mode, no testing of any chart is done. In this mode only the specified cluster is created."
+  echo "The cluster has 'app-operator', 'chart-operator' and 'chart-museum' already installed."
 }
 
 parse_args () {
@@ -1026,6 +1031,10 @@ parse_args () {
       -i|--kind-config-file)
         KIND_CONFIG_FILE=$2
         shift 2
+        ;;
+      -j|--just-cluster)
+        JUST_CLUSTER=1
+        shift 1
         ;;
       -p|--pre-script-path)
         OVERRIDEN_PRE_SCRIPT_PATH=$2
@@ -1103,16 +1112,6 @@ parse_args () {
     force_cleanup
   fi
 
-  if [[ -z $CHART_NAME ]]; then
-    err "chart name must be given with '-c' option"
-    exit 3
-  fi
-
-  if [[ ! -d "helm/${CHART_NAME}" ]]; then
-    err "The 'helm/' directory doesn't contain chart named '${CHART_NAME}'."
-    exit 3
-  fi
-
   if [[ "$CLUSTER_TYPE" == "kind" ]]; then
     if [[ ! -z $KIND_CONFIG_FILE && ! -f $KIND_CONFIG_FILE ]]; then
       err "KinD config file '$KIND_CONFIG_FILE' was specified, but doesn't exist."
@@ -1147,6 +1146,21 @@ parse_args () {
     info "Cluster will scale between $SCALING_MIN and $SCALING_MAX nodes."
   else
     err "Only clusters of types: [kind, giantswarm] are supported now"
+    exit 3
+  fi
+
+  # don't validate chart related options, if we're just creating a cluster
+  if [[ ! -z ${JUST_CLUSTER} ]]; then
+    just_cluster
+  fi
+
+  if [[ -z $CHART_NAME ]]; then
+    err "Chart name must be given with '-c' option or '-j' must be used. Run '-h' for help."
+    exit 3
+  fi
+
+  if [[ ! -d "helm/${CHART_NAME}" ]]; then
+    err "The 'helm/' directory doesn't contain chart named '${CHART_NAME}'. Run '-h' for help."
     exit 3
   fi
 }
@@ -1187,8 +1201,15 @@ test_main () {
   fi
 }
 
-parse_args $@
+just_cluster() {
+  create_cluster ${CLUSTER_TYPE}
+  start_tools ${CLUSTER_TYPE}
+  info "Cluster created"
+  exit 0
+}
+
 info "kube-app-testing v${KAT_VERSION}"
+parse_args $@
 validate_tools
 validate_chart ${CHART_NAME}
 build_chart ${CHART_NAME}
