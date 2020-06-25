@@ -18,6 +18,19 @@ kind-app-testing.sh -h
 
 ## How it works
 
+There are 2 main modes:
+
+### Just cluster mode
+
+In the `-j` mode, a generic purpose cluster with `app-operator`, `chart-operator` and `chart-museum` is
+create. No chat checking, validation or testing is done. Such cluster might be useful for custom
+testing applications during development.
+
+### Chart test mode
+
+In hte mode selected with `-c` switch, cluster is created as above, but also full chart validation and
+testing is performed.
+
 A single test cycle works as below:
 
 1. If there's an old test cluster, it is deleted.
