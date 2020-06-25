@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.4.1
+KAT_VERSION=0.4.2
 
 # config
 CONFIG_DIR=/tmp/kat_test
@@ -36,9 +36,9 @@ DEFAULT_SCALING_MAX=2
 
 # docker image tags
 ARCHITECT_VERSION_TAG=latest
-APP_OPERATOR_VERSION_TAG=1.0.7
-CHART_OPERATOR_VERSION_TAG=0.13.1
-CHART_MUSEUM_VERSION_TAG=v0.12.0
+APP_OPERATOR_VERSION_TAG=${APP_OPERATOR_VERSION_TAG:-1.0.7}
+CHART_OPERATOR_VERSION_TAG=${CHART_OPERATOR_VERSION_TAG:-0.13.1}
+CHART_MUSEUM_VERSION_TAG=${CHART_MUSEUM_VERSION_TAG:-v0.12.0}
 PYTHON_VERSION_TAG=3.7-alpine
 CHART_TESTING_VERSION_TAG=v2.4.0
 
@@ -262,7 +262,15 @@ metadata:
     application.giantswarm.io/catalog-type: ""
   name: testing
 spec:
+  config:
+    configMap:
+      name: ""
+      namespace: ""
+    secret:
+      name: ""
+      namespace: ""
   description: 'Catalog to hold charts for testing.'
+  logoURL: /favicon.ico
   storage:
     URL: http://chart-museum.${TOOLS_NAMESPACE}.svc.${K8S_BASE_DOMAIN}:8080/charts/
     type: helm
@@ -708,11 +716,11 @@ start_tools () {
   done
   unset _counter
 
-  info "Deploying \"chart-museum\""
+  info "Deploying \"chart-museum\" ${CHART_MUSEUM_VERSION_TAG}"
   chart_museum_deploy ${cluster_type}
 
   # deploy app-operator to all cluster types
-  info "Deploying \"app-operator\""
+  info "Deploying \"app-operator\" ${APP_OPERATOR_VERSION_TAG}"
   kubectl -n ${TOOLS_NAMESPACE} create serviceaccount appcatalog
   kubectl create clusterrolebinding appcatalog_cluster-admin --clusterrole=cluster-admin --serviceaccount=${TOOLS_NAMESPACE}:appcatalog
   # tenant clusters have a default deny-all network policy which breaks app-operator
@@ -723,7 +731,7 @@ start_tools () {
 
   # only deploy chart-operator to kind clusters
   if [[ "$cluster_type" == "kind" ]]; then
-    info "Deploying \"chart-operator\""
+    info "Deploying \"chart-operator\" ${CHART_OPERATOR_VERSION_TAG}"
     kubectl -n ${TOOLS_NAMESPACE} run chart-operator --serviceaccount=appcatalog -l app=chart-operator --image=quay.io/giantswarm/chart-operator:${CHART_OPERATOR_VERSION_TAG} -- daemon --server.listen.address="http://127.0.0.1:7000" --service.kubernetes.incluster="true"
   fi
 
