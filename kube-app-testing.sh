@@ -386,10 +386,17 @@ create_kind_cluster () {
 
 delete_kind_cluster () {
   info "Deleting KinD cluster ${CLUSTER_NAME}"
-  kind delete cluster --name ${CLUSTER_NAME}
+  if ! kind delete cluster --name ${CLUSTER_NAME}; then
+    err "Cluster deletion failed - please investigate."
+    exit 3
+  else
+    # tidy up after ourselves
+    if [[ -f ${ENV_DETAILS_FILE} ]]; then
+      rm ${ENV_DETAILS_FILE}
+    fi
 
-  if [[ -f ${ENV_DETAILS_FILE} ]]; then
-    rm ${ENV_DETAILS_FILE}
+    # exit successfully
+    exit 0
   fi
 }
 
@@ -625,16 +632,18 @@ create_gs_cluster () {
 
 delete_gs_cluster () {
   info "Deleting Giant Swarm tenant cluster ${CLUSTER_ID}"
-  curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/ -X DELETE \
-    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}"
-
-  if [[ "$?" -gt 0 ]]; then
+  if ! curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/ -X DELETE \
+      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ; then
     err "Cluster deletion failed - please investigate."
     exit 3
-  fi
+  else
+    # tidy up after ourselves
+    if [[ -f ${ENV_DETAILS_FILE} ]]; then
+      rm ${ENV_DETAILS_FILE}
+    fi
 
-  if [[ -f ${ENV_DETAILS_FILE} ]]; then
-    rm ${ENV_DETAILS_FILE}
+    # exit successfully
+    exit 0
   fi
 }
 
