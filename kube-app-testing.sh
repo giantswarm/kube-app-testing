@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.4.2
+KAT_VERSION=0.5.1
 
 # config
 CONFIG_DIR=/tmp/kat_test
@@ -911,10 +911,12 @@ run_pytest () {
     -c "pip install pipenv \
     && cd ${PYTHON_TESTS_DIR} \
     && $pipenv_cmd \
+      --cluster-type existing \
       --kube-config /kube.config \
-      --chart-name ${chart_name} \
-      --chart-version ${CHART_VERSION} \
       --values-file ../../${config_file} \
+      --chart-path \"helm/${chart_name}\" \
+      --chart-version ${CHART_VERSION} \
+      --log-cli-level info \
       --junitxml=../../${test_res_file}"
 }
 
