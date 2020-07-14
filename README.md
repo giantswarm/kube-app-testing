@@ -2,7 +2,11 @@
 
 This script builds and tests a helm chart using either a KinD cluster, or a full Giant Swarm tenant
 cluster. The only required parameter is `[chart name]`, which needs to be a name of the chart which
- is present in directory `helm/`.
+is present in directory `helm/`.
+
+Running `pytest` based tests is optional, but recommended for app specific tests. For that purpose
+we have a related [`pytest-helm-charts`](https://github.com/giantswarm/pytest-helm-charts)
+plugin, which is tuned to work with `kube-app-testing.
 
 ## Installation
 
@@ -13,7 +17,7 @@ Checkout the repo and make `kube-app-testing.sh` executable and visible in your 
 Type:
 
 ```bash
-kind-app-testing.sh -h
+kube-app-testing.sh -h
 ```
 
 ## How it works
@@ -28,7 +32,7 @@ testing applications during development.
 
 ### Chart test mode
 
-In hte mode selected with `-c` switch, cluster is created as above, but also full chart validation and
+In the mode selected with `-c` switch, cluster is created as above, but also full chart validation and
 testing is performed.
 
 A single test cycle works as below:
@@ -52,13 +56,17 @@ A single test cycle works as below:
 
        ```bash
        pipenv run pytest \
-       --kube-config /kube.config \
-       --chart-name ${chart_name} \
-       --values-file ../../${config_file} \
-       --junitxml=../../${test_res_file}
+         --cluster-type existing \
+         --kube-config /kube.config \
+         --values-file ../../${config_file} \
+         --chart-path \"helm/${chart_name}\" \
+         --chart-version ${CHART_VERSION} \
+         --chart-extra-info \"external_cluster_type=${CLUSTER_TYPE}\" \
+         --log-cli-level info \
+         --junitxml=../../${test_res_file}"
        ```
 
-       As you can see, test results are saved in the directory `test-results/` in junit format
+       Test results are saved in the directory `test-results/` in junit format
        for each of the test runs.
 
     1. If `-k` was given as command line option, the program exits keeping the test cluster.
@@ -74,11 +82,11 @@ Following tools must be installed in the system:
 
 ## Development setup for functional tests with python
 
-When you develop your tests intended to run with `pytest`, you can shorten you test-feedback
+*Hint: When you develop your tests intended to run with `pytest`, you can shorten you test-feedback
 loop considerably by not running the full tool every single time, but just executing
-`pytest` the same way the tool does.
+`pytest` the same way the tool does.*
 
-In order to do that and start working on a new project, that has a helm chart, but no
+To start working on tests for a new project, that has a helm chart, but no
 python tests, follow this steps:
 
 1. Make sure you have `python 3.7` installed and selected as default python interpreter,
@@ -91,7 +99,7 @@ python tests, follow this steps:
 2. Go to your application repo, create the directory `test/kat` and `cd` to it
 
    ```bash
-   mkdir test/kat
+   mkdir -p test/kat
    cd test/kat
    ```
 
@@ -104,21 +112,19 @@ python tests, follow this steps:
 4. Install `pytest` and basic recommended libs in the `pipenv` virtual environment:
 
    ```bash
-   pipenv install pytest pytest-rerunfailures kubetest kubernetes
+   pipenv install pytest-helm-charts
    ```
 
    Commit `Pipfile` and `Pipfile.lock` files.
 
-5. Write your tests. To get started faster, you might want to include this
-   [`conftest.py`](https://github.com/giantswarm/giantswarm-todo-app/blob/master/test/kat/conftest.py)
-   file to get fixtures offering you the tested chart name and the path and values loaded
-   from `helm/[app]/ci*.yaml` file used for this test run.
+5. Write your tests. This project is meant to use `pytest` with `pytest-helm-charts`, so
+   look there for docs.
 
 6. Use the tool to create a `kind` cluster you can use for your testing. Ask to not delete it
-   by passing `-k` option:
+   by passing `-k` option. You can also skip running `pytest` based tests by passing `-s`:
 
    ```bash
-   kind-app-testing.sh -c [app] -k
+   kube-app-testing.sh -c [app] -k [-s]
    ```
 
 7. Now you're good to directly execute your tests against the test cluster:
@@ -126,8 +132,11 @@ python tests, follow this steps:
    ```bash
    pipenv run pytest \
       --kube-config /tmp/kind_test/kubei.config \
-      --chart-name [app] \
+      --chart-path \"helm/[app]\" \
       --values-file [""|../../[app]/ci/[config_file.yaml]
+      --cluster-type existing \
+      --chart-extra-info \"external_cluster_type=[kind|giantswarm]\" \
+      --log-cli-level info
    ```
 
 ## Integration with CircleCI
@@ -154,18 +163,18 @@ jobs:
       - run: curl -Lo /tmp/helm.tar.gz https://get.helm.sh/helm-v2.16.5-linux-amd64.tar.gz
       - run: tar zxf /tmp/helm.tar.gz -C /tmp && mv /tmp/linux-amd64/helm /tmp/helm
       - run: /tmp/helm init -c
-      - run: curl -Lo /tmp/kind-app-testing.sh -q https://raw.githubusercontent.com/giantswarm/kube-app-testing/master/kube-app-testing.sh
-      - run: chmod +x /tmp/kind-app-testing.sh
+      - run: curl -Lo /tmp/kube-app-testing.sh -q https://raw.githubusercontent.com/giantswarm/kube-app-testing/master/kube-app-testing.sh
+      - run: chmod +x /tmp/kube-app-testing.sh
       - run: curl -Lo /tmp/kubectl https://storage.googleapis.com/kubernetes-release/release/v1.18.0/bin/linux/amd64/kubectl
       - run: chmod +x /tmp/kubectl
-      - run: PATH="/tmp:$PATH" kind-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name ci-<insert-app-name-here> -a ${GS_API_KEY} -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE} --giantswarm-api-url ${GS_API_URL}
+      - run: PATH="/tmp:$PATH" kube-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name ci-<insert-app-name-here> -a ${GS_API_KEY} -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE} --giantswarm-api-url ${GS_API_URL}
       - store_test_results:
           path: test-results
       - store_artifacts:
           path: test-results
       - run:
           name: Cleanup resources
-          command: PATH="/tmp:$PATH" kind-app-testing.sh -a ${GS_API_KEY} --force-cleanup
+          command: PATH="/tmp:$PATH" kube-app-testing.sh -a ${GS_API_KEY} --force-cleanup
           when: on_fail
 
 workflows:
@@ -182,7 +191,7 @@ workflows:
 
 Requirements:
 
-* AWS:
-  * IAM user with `ec2:AuthorizeSecurityGroupIngress` and `ec2:DescribeSecurityGroups` **in the tenant cluster account**.
-  * IAM user's access key & key ID must be added as environment variables to the CircleCI project. They should be called `AWS_ACCESS_KEY_ID` & `AWS_SECRET_ACCESS_KEY`.
-  * The AWS CLI is required when testing against AWS.
+- for running on AWS:
+  - IAM user with `ec2:AuthorizeSecurityGroupIngress` and `ec2:DescribeSecurityGroups` **in the tenant cluster account**.
+  - IAM user's access key & key ID must be added as environment variables to the CircleCI project. They should be called `AWS_ACCESS_KEY_ID` & `AWS_SECRET_ACCESS_KEY`.
+  - The AWS CLI is required when testing against AWS.
