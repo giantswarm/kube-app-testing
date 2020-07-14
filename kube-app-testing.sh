@@ -525,6 +525,8 @@ create_gs_cluster () {
   info "Creating new tenant cluster."
 
   # create a new cluster
+  echo curl ${GS_API_URL}/v5/clusters/ -X POST -H "Content-Type: application/json" -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" -d "$(gen_gs_blob cluster)"
+  set -x
   if ! CLUSTER_DETAILS=$(curl ${GS_API_URL}/v5/clusters/ -X POST \
       -H "Content-Type: application/json" \
       -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
@@ -532,7 +534,7 @@ create_gs_cluster () {
     err "Cluster creation failed."
     exit 3
   fi
-
+  set +x
   CLUSTER_ID=$(jq -r .id <<< "${CLUSTER_DETAILS}")
 
   # make sure we're not too fast for the API
