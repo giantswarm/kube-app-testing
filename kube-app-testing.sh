@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.5.1
+KAT_VERSION=0.5.2
 
 # config
 CONFIG_DIR=/tmp/kat_test
@@ -916,6 +916,7 @@ run_pytest () {
       --values-file ../../${config_file} \
       --chart-path \"helm/${chart_name}\" \
       --chart-version ${CHART_VERSION} \
+      --chart-extra-info \"external_cluster_type=${CLUSTER_TYPE}\" \
       --log-cli-level info \
       --junitxml=../../${test_res_file}"
 }
