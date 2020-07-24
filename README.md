@@ -27,7 +27,7 @@ There are 2 main modes:
 ### Just cluster mode
 
 In the `-j` mode, a generic purpose cluster with `app-operator`, `chart-operator` and `chart-museum` is
-create. No chat checking, validation or testing is done. Such cluster might be useful for custom
+create. No chart checking, validation or testing is done. Such cluster might be useful for custom
 testing applications during development.
 
 ### Chart test mode
