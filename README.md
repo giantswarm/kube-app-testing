@@ -47,7 +47,7 @@ A single test cycle works as below:
        is started using an embedded kind config file. You can override
        the config file using command line option `-i`. When the cluster is up, `app-operator`,
        `chart-operator` and `chart-museum` are deployed.
-    1. If there's a file `helm/[chart name]/si/pre-test-hook.sh`, it is executed. The
+    1. If there's a file `helm/[chart name]/ci/pre-test-hook.sh`, it is executed. The
        `KUBECONFIG` variable is set to point to the test cluster for the script execution.
     1. Chart is pushed to the `chart-musuem` repository in the cluster.
     1. The App CR is created to deploy the application.
