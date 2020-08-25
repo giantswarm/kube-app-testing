@@ -792,11 +792,11 @@ validate_chart () {
 
   info "Linting chart \"${chart_name}\" with \"ct\""
   CT_DOCKER_RUN="docker run -it --rm -v $(pwd):/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG}"
-  if [[ -n "${CT_CONFIG_FILE}" ]]
+    if [[ -n "${CT_CONFIG_FILE}" ]]
   then
-    $CT_DOCKER_RUN sh -c "helm init -c && ct lint --config $CT_CONFIG_FILE --validate-maintainers=false --charts=\"helm/${chart_name}\""
+    $CT_DOCKER_RUN sh -c "helm init -c && helm repo add bitnami https://charts.bitnami.com/bitnami && ct lint --config $CT_CONFIG_FILE --validate-maintainers=false --charts=\"helm/${chart_name}\""
   else
-    $CT_DOCKER_RUN sh -c "helm init -c && ct lint --validate-maintainers=false --charts=\"helm/${chart_name}\""
+    $CT_DOCKER_RUN sh -c "helm init -c && helm repo add bitnami https://charts.bitnami.com/bitnami && ct lint --validate-maintainers=false --charts=\"helm/${chart_name}\""
   fi
 
   if [[ $VALIDATE_ONLY -eq 1 ]]; then
