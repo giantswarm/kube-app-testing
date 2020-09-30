@@ -520,23 +520,42 @@ update_aws_sec_group () {
   fi
 }
 
+gsctl_with_options () {
+  gsctl --endpoint="${GS_API_URL}" --auth-token="${GSAPI_AUTH_TOKEN}" "$@"
+}
+
 
 create_gs_cluster () {
   info "Creating new tenant cluster."
 
   # create a new cluster
-  if ! CLUSTER_DETAILS=$(curl ${GS_API_URL}/v5/clusters/ -X POST \
-      -H "Content-Type: application/json" \
-      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-      -d "$(gen_gs_blob cluster)") ; then
-    err "Cluster creation failed."
-    exit 3
-  fi
+  CLUSTER_DETAILS="$(gsctl_with_options create cluster --output=json --file - <<EOF
+api_version: v5
+owner: giantswarm
+release_version: ${GS_RELEASE}
+name: ${CLUSTER_NAME}
+master_nodes:
+  high_availability: false
+labels:
+  circleci-branch: "${CIRCLE_BRANCH:-no}"
+  circleci-build-num: "${CIRCLE_BUILD_NUM:-no}"
+  github-repo: "${CIRCLE_PROJECT_REPONAME:-no}"
+  github-user: "${CIRCLE_PROJECT_USERNAME:-no}"
+  owner: "ci"
+nodepools:
+- availability_zones:
+    number: 1
+  scaling:
+    min: ${SCALING_MIN}
+    max: ${SCALING_MAX}
+  node_spec:
+    aws:
+      instance_type: m5.xlarge
+      use_alike_instance_types: true
+EOF
+)"
 
   CLUSTER_ID=$(jq -r .id <<< "${CLUSTER_DETAILS}")
-
-  # make sure we're not too fast for the API
-  sleep 5
 
   # write cluster details to file to run a manual cleanup later if required.
   echo "export CLUSTER_ID=${CLUSTER_ID}" > ${ENV_DETAILS_FILE}
@@ -544,28 +563,6 @@ create_gs_cluster () {
   echo "export GS_API_URL=${GS_API_URL}" >> ${ENV_DETAILS_FILE}
   if [ $KEEP_AFTER_TEST ]; then
     echo "export KEEP_AFTER_TEST=${KEEP_AFTER_TEST}" >> ${ENV_DETAILS_FILE}
-  fi
-
-  info "Creating nodepool for cluster ${CLUSTER_ID}"
-  # create a nodepool
-  curl ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/nodepools/ -X POST \
-    -H "Content-Type: application/json" \
-    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-    -d "$(gen_gs_blob nodepool)"
-
-  if [[ "$?" -gt 0 ]]; then
-    err "Nodepool creation failed."
-    exit 3
-  fi
-
-  info "Adding labels to cluster ${CLUSTER_ID}"
-  # label the cluster with some useful information. failure to label a cluster
-  # doesn't cause a job failure
-  if ! curl ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/labels/ -X PUT \
-      -H "Content-Type: application/json" \
-      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-      -d "$(gen_gs_blob addlabels)" ; then
-    err "Could not label cluster, however the job will continue."
   fi
 
   # wait for the cluster to be ready
@@ -1188,7 +1185,7 @@ parse_args () {
 validate_tools () {
   info "Checking for necessary tools being installed"
   set +e
-  for app in "kind" "helm" "curl" "jq"; do
+  for app in "kind" "helm" "curl" "jq" "gsctl"; do
     which $app 1>/dev/null 2>&1
     exit_code=$?
     if [[ $exit_code -gt 0 ]]; then
@@ -1200,6 +1197,8 @@ validate_tools () {
   kind version
   info "Listing helm version"
   helm version 2>/dev/null
+  info "Listing gsctl version"
+  gsctl --version
   set -e
 }
 
