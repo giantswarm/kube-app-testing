@@ -761,7 +761,7 @@ verify_helm () {
   expected="DEPLOYED"
   while true; do
     set +e
-    status_out=$(helm --tiller-namespace giantswarm status ${chart_name} 2>&1 | head -n 3 | grep "STATUS:")
+    status_out=$(helm --kubeconfig ${KUBECONFIG} --tiller-namespace giantswarm status ${chart_name} 2>&1 | head -n 3 | grep "STATUS:")
     out_code=$?
     set -e
     status=${status_out##* }

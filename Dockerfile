@@ -5,7 +5,7 @@ RUN apt update && apt install -y curl jq docker.io \
     -o /usr/local/bin/kind && chmod +x /usr/local/bin/kind \
   && curl -L https://storage.googleapis.com/kubernetes-release/release/v1.18.9/bin/linux/amd64/kubectl \
     -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl \
-  && curl -L https://get.helm.sh/helm-v2.16.9-linux-amd64.tar.gz \
+  && curl -L https://get.helm.sh/helm-v2.16.12-linux-amd64.tar.gz \
     | tar -zx --strip-components=1 --directory=/usr/local/bin linux-amd64/helm
 
 RUN curl -L https://github.com/giantswarm/gsctl/releases/download/0.24.3/gsctl-0.24.3-linux-amd64.tar.gz \
