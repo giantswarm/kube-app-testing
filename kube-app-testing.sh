@@ -400,84 +400,6 @@ delete_kind_cluster () {
   fi
 }
 
-gen_gs_blob () {
-  # one function to generate different JSON blobs
-
-  # payload for creating a cluster
-  if [[ "$1" == "cluster" ]]; then
-  cat <<EOF
-{
-	"owner": "giantswarm",
-	"release_version": "${GS_RELEASE}",
-	"name": "${CLUSTER_NAME}",
-	"master": {
-		"availability_zone": "${AVAILABILITY_ZONE}"
-	}
-}
-EOF
-  # payload for creating a nodepool
-  elif [[ "$1" == "nodepool" ]]; then
-  cat <<EOF
-{
-  "name": "${CLUSTER_NAME}",
-  "availability_zones": {
-    "number": 1
-  },
-  "scaling": {
-    "min": ${SCALING_MIN},
-    "max": ${SCALING_MAX}
-  }
-}
-EOF
-  # payload for labelling a cluster
-  elif [[ "${1}" == "addlabels" ]]; then
-  cat <<EOF
-{
-  "labels": {
-    "circleci-branch": "${CIRCLE_BRANCH}",
-    "circleci-build-num": "${CIRCLE_BUILD_NUM}",
-    "github-repo": "${CIRCLE_PROJECT_REPONAME}",
-    "github-user": "${CIRCLE_PROJECT_USERNAME}",
-    "owner": "ci"
-  }
-}
-EOF
-  # payload for creating a client key pair
-  elif [[ "$1" == "keypair" ]]; then
-  cat <<EOF
-{
-  "description": "CI-generated key pair",
-  "ttl_hours": 6,
-  "certificate_organizations": "system:masters"
-}
-EOF
-  # template a kubeconfig based on the created key pair.
-  # expects a file path as the second argument
-  elif [[ "$1" == "kubeconfig" ]]; then
-  cat > $2 << EOF
-apiVersion: v1
-clusters:
-- cluster:
-    certificate-authority-data: "${CA_CERT}"
-    server: "${TC_API_URI}"
-  name: giantswarm-${CLUSTER_ID}
-contexts:
-- context:
-    cluster: giantswarm-${CLUSTER_ID}
-    user: giantswarm-${CLUSTER_ID}-user
-  name: giantswarm-${CLUSTER_ID}
-current-context: giantswarm-${CLUSTER_ID}
-kind: Config
-preferences: {}
-users:
-- name: giantswarm-${CLUSTER_ID}-user
-  user:
-    client-certificate-data: "${CLIENT_CERT}"
-    client-key-data: "${CLIENT_KEY}"
-EOF
-  fi
-}
-
 update_aws_sec_group () {
   cluster_id=$1
 
@@ -544,7 +466,8 @@ labels:
   owner: "ci"
 nodepools:
 - availability_zones:
-    number: 1
+    zones:
+    - "${AVAILABILITY_ZONE}"
   scaling:
     min: ${SCALING_MIN}
     max: ${SCALING_MAX}
@@ -565,10 +488,39 @@ EOF
     echo "export KEEP_AFTER_TEST=${KEEP_AFTER_TEST}" >> ${ENV_DETAILS_FILE}
   fi
 
+  # align config with kind clusters
+  if [[ ! -d ${CONFIG_DIR} ]]; then
+    mkdir ${CONFIG_DIR}
+  fi
+
+  info "Sleeping 10 seconds before create kubeconfig attempt"
+  sleep 10
+
+  # declare a counter
+  _counter=0
+  info "Writing kubeconfig into ${KUBECONFIG}"
+  until gsctl_with_options create kubeconfig \
+    --cluster="${CLUSTER_ID}" \
+    --certificate-organizations=system:masters \
+    --force \
+    --self-contained="${KUBECONFIG}"
+  do
+    # exit if the kubeconfig hasn't been created in 30 minutes
+    if [[ "$_counter" -gt 60 ]]; then
+      err "Kubeconfig not created after 30 minutes."
+      exit 3
+    fi
+
+    # increment the counter
+    _counter=$((_counter+1))
+    info "Waiting for kubeconfig for cluster ${CLUSTER_ID} to be created."
+    sleep 30
+  done
+
   # wait for the cluster to be ready
   # declare a counter
   _counter=0
-  until [ `curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/ | jq .conditions | grep -i "created" | wc -l` -gt 0 ]; do
+  until kubectl get nodes; do
     # exit if the cluster hasn't been created in 30 minutes
     if [[ "$_counter" -gt 60 ]]; then
       err "Cluster not created after 30 minutes."
@@ -581,42 +533,8 @@ EOF
     sleep 30
   done
 
-  info "Creating key-pair for tenant cluster access."
-  # create a key pair (must be stored directly in a variable)
-  _key_pair=$(curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/key-pairs/ -X POST \
-    -H "Content-Type: application/json" \
-    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-    -d "$(gen_gs_blob keypair)")
-
-  # check that we actually got a key pair back
-  grep -q "certificate_authority_data" <<< $_key_pair
-  if [[ "$?" -gt 0 ]]; then
-    err "Key pair creation failed."
-    exit 3
-  fi
-
-  # parse required fields from key pair creation response in order to
-  # create a kubeconfig for the tenant cluster
-  TC_API_URI=$(curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/ | jq -r .api_endpoint)
-  CA_CERT=$(echo $_key_pair | jq -r '.certificate_authority_data | @base64')
-  CLIENT_CERT=$(echo $_key_pair | jq -r '.client_certificate_data | @base64')
-  CLIENT_KEY=$(echo $_key_pair | jq -r '.client_key_data | @base64')
-
-  # align config with kind clusters
-  if [[ ! -d ${CONFIG_DIR} ]]; then
-    mkdir ${CONFIG_DIR}
-  fi
-
-  info "Templating kubeconfig out to ${KUBECONFIG}"
-  # create the kubeconfig
-  gen_gs_blob kubeconfig ${KUBECONFIG}
-
-  # update Security Group to allow access
-  update_aws_sec_group ${CLUSTER_ID}
-
-  # make sure the ingress rule has taken effect before we attempt to connect
-  info "Sleeping for 30 seconds to ensure ingress rule has been applied."
-  sleep 30
+  info "Waiting for cluster nodes of ${CLUSTER_ID} to be ready. (kubectl wait)"
+  kubectl wait --for=condition=ready --timeout=5m --all node
 
   info "Testing tenant cluster by listing pods in 'kube-system' namespace."
   # test connectivity
