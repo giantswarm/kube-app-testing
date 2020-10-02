@@ -823,6 +823,7 @@ run_pytest () {
   pipenv_cmd='PATH=$HOME/.local/bin:$PATH pipenv sync && PATH=$HOME/.local/bin:$PATH pipenv run pytest --log-cli-level info --full-trace --verbosity=8 .'
   KUBECONFIG_STR="$(cat ${KUBECONFIG})"
   docker run -it \
+    --network host \
     -v ${TMP_DIR}/.local:/root/.local \
     -v ${TMP_DIR}/.cache:/root/.cache \
     -v `pwd`:/chart -w /chart \
