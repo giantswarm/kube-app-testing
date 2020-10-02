@@ -537,6 +537,7 @@ EOF
   done
 
   info "Waiting for cluster nodes of ${CLUSTER_ID} to be ready. (kubectl wait)"
+  sleep 30
   kubectl wait --for=condition=ready --timeout=5m --all node
 
   info "Testing tenant cluster by listing pods in 'kube-system' namespace."
@@ -821,12 +822,13 @@ run_pytest () {
   fi
   pipenv_cmd='PATH=$HOME/.local/bin:$PATH pipenv sync && PATH=$HOME/.local/bin:$PATH pipenv run pytest --log-cli-level info --full-trace --verbosity=8 .'
   docker run -it --rm \
+    -e KUBECONFIG_STR="$(cat ${KUBECONFIG})" \
     -v ${TMP_DIR}/.local:/root/.local \
     -v ${TMP_DIR}/.cache:/root/.cache \
     -v `pwd`:/chart -w /chart \
-    -v ${KUBECONFIG}:/kube.config:ro \
     python:${PYTHON_VERSION_TAG} sh \
-    -c "pip install pipenv \
+    -c "echo -n ${KUBECONFIG_STR} > /kube.config \
+    && pip install pipenv \
     && cd ${PYTHON_TESTS_DIR} \
     && $pipenv_cmd \
       --cluster-type existing \
