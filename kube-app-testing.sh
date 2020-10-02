@@ -28,7 +28,7 @@ PYTHON_TESTS_DIR="test/kat"
 
 # gs cluster config
 DEFAULT_PROVIDER="aws"
-DEFAULT_GS_API_URL="https://api.g8s.gorilla.eu-central-1.aws.gigantic.io"
+DEFAULT_GS_API_URL="https://api.g8s.gaia.eu-central-1.aws.gigantic.io"
 DEFAULT_REGION="eu-central-1"
 DEFAULT_AVAILABILITY_ZONE="eu-central-1a"
 DEFAULT_SCALING_MIN=1
@@ -36,8 +36,8 @@ DEFAULT_SCALING_MAX=2
 
 # docker image tags
 ARCHITECT_VERSION_TAG=latest
-APP_OPERATOR_VERSION_TAG=${APP_OPERATOR_VERSION_TAG:-1.0.7}
-CHART_OPERATOR_VERSION_TAG=${CHART_OPERATOR_VERSION_TAG:-0.13.1}
+APP_OPERATOR_VERSION_TAG=${APP_OPERATOR_VERSION_TAG:-v1.0.0}
+CHART_OPERATOR_VERSION_TAG=${CHART_OPERATOR_VERSION_TAG:-0.13.2}
 CHART_MUSEUM_VERSION_TAG=${CHART_MUSEUM_VERSION_TAG:-v0.12.0}
 PYTHON_VERSION_TAG=3.7-alpine
 CHART_TESTING_VERSION_TAG=v2.4.0
@@ -246,12 +246,12 @@ EOF
 }
 
 create_app_catalog_cr () {
-  if  [[ "${CLUSTER_TYPE}" == "kind" ]]; then
-    K8S_BASE_DOMAIN="cluster.local"
-  elif [[ "${CLUSTER_TYPE}" == "giantswarm" ]]; then
-    # Gorilla uses a different base domain
-    K8S_BASE_DOMAIN="eu-central-1.local"
-  fi
+  # if  [[ "${CLUSTER_TYPE}" == "kind" ]]; then
+  #   K8S_BASE_DOMAIN="cluster.local"
+  # elif [[ "${CLUSTER_TYPE}" == "giantswarm" ]]; then
+  #   # Gorilla uses a different base domain
+  #   K8S_BASE_DOMAIN="eu-central-1.local"
+  # fi
 
   kubectl create -f - << EOF
 apiVersion: application.giantswarm.io/v1alpha1
@@ -272,7 +272,7 @@ spec:
   description: 'Catalog to hold charts for testing.'
   logoURL: /favicon.ico
   storage:
-    URL: http://chart-museum.${TOOLS_NAMESPACE}.svc.${K8S_BASE_DOMAIN}:8080/charts/
+    URL: http://chart-museum.${TOOLS_NAMESPACE}.svc.cluster.local:8080/charts/
     type: helm
   title: Testing Catalog
 EOF
@@ -451,9 +451,9 @@ create_gs_cluster () {
   info "Creating new tenant cluster."
 
   # create a new cluster
-  CLUSTER_DETAILS="$(gsctl_with_options create cluster --output=json --file - <<EOF
+  if ! CLUSTER_DETAILS="$(gsctl_with_options create cluster --output=json --file - <<EOF
 api_version: v5
-owner: giantswarm
+owner: conformance-testing
 release_version: ${GS_RELEASE}
 name: ${CLUSTER_NAME}
 master_nodes:
@@ -476,7 +476,10 @@ nodepools:
       instance_type: m5.xlarge
       use_alike_instance_types: true
 EOF
-)"
+)" ; then
+    err "Cluster creation failed."
+    exit 3
+  fi
 
   CLUSTER_ID=$(jq -r .id <<< "${CLUSTER_DETAILS}")
 
@@ -926,7 +929,7 @@ print_help () {
   echo "                                  be ignored and max will be set to the same as min, resulting in a"
   echo "                                  statically-sized nodepool"
   echo ""
-  echo "Requirements: kind, helm, curl, jq."
+  echo "Requirements: kind, helm, curl, jq, gsctl."
   echo ""
   echo "In the '-c' mode, this script builds and tests a helm chart using a dedicated cluster."
   echo "The only required parameter is [chart name], which needs to be a name of the chart and "

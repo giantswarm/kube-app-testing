@@ -1,6 +1,6 @@
 FROM python:3.8-slim
 
-RUN apt update && apt install -y curl jq docker.io \
+RUN apt update && apt install -y curl jq docker.io vim tmux \
   && curl -L https://kind.sigs.k8s.io/dl/v0.7.0/kind-Linux-amd64 \
     -o /usr/local/bin/kind && chmod +x /usr/local/bin/kind \
   && curl -L https://storage.googleapis.com/kubernetes-release/release/v1.18.9/bin/linux/amd64/kubectl \

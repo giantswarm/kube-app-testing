@@ -79,6 +79,7 @@ Following tools must be installed in the system:
 - helm
 - curl
 - jq
+- gsctl
 
 ## Development setup for functional tests with python
 
