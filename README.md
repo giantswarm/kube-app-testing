@@ -20,6 +20,21 @@ Type:
 kube-app-testing.sh -h
 ```
 
+### With docker
+
+```
+docker build -t kat .
+docker run --rm -it \
+  --name kat \
+  --network host \
+  --mount type=bind,source=$HOME/.config/gsctl,target=/root/.config/gsctl \
+  --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
+  --mount type=bind,source=$PWD,target=$PWD,bind-propagation=rslave \
+  --mount type=bind,source=/home/gerald/code/kube-app-testing/kube-app-testing.sh,target=/usr/local/bin/kube-app-testing.sh,bind-propagation=rslave \
+  --workdir $PWD \
+  kat bash
+```
+
 ## How it works
 
 There are 2 main modes:
@@ -37,16 +52,21 @@ testing is performed.
 
 A single test cycle works as below:
 
-1. If there's an old test cluster, it is deleted.
 1. Chart is validated and source files are templated using [`architect`](https://github.com/giantswarm/architect)
 1. Linting is run using [chart-testing](https://github.com/helm/chart-testing).
 1. Chart is built using `helm`
 1. The following loop is run for every test config file present in `helm/[app]/ci/*yaml`. If there
    are no config files, the loop is started just once, without any config.
-    1. New kubernetes cluster is created. Currently, only `kind` is supported, so a new `kind` cluster
-       is started using an embedded kind config file. You can override
-       the config file using command line option `-i`. When the cluster is up, `app-operator`,
+    1. New kubernetes cluster is created. Flag `-t` specified the type of the cluster.
+       Supported values are `kind` and `giantswarm`.
+       Specifying `kind` will create a kind-cluster using an embedded kind config
+       file. You can override the config file using command line option `-i`.
+       Specifying `giantswarm` utilizes `gsctl` to create a giantswarm cluster. Check out
+       [GSCTL Environment configuration](https://docs.giantswarm.io/reference/gsctl/#configuration).
+       When the cluster is up, `app-operator`,
        `chart-operator` and `chart-museum` are deployed.
+    1. set `--no-external-kube-api` to disable opening the kubernetes api of a `giantswarm`
+       cluster to the internet. (Usually only required where VPN is not available)
     1. If there's a file `helm/[chart name]/ci/pre-test-hook.sh`, it is executed. The
        `KUBECONFIG` variable is set to point to the test cluster for the script execution.
     1. Chart is pushed to the `chart-musuem` repository in the cluster.
@@ -145,6 +165,9 @@ python tests, follow this steps:
 Integration with CircleCI requires a job definition similar to the one below. Note that the last step in the job
 is important to ensure any dangling resources are removed if a run fails midway through.
 
+You'll also have to export your desired `GSCTL_ENDPOINT` and `GSCTL_AUTH_TOKEN` when testing on a `giantswarm` cluster.
+Check out [GSCTL Environment configuration](https://docs.giantswarm.io/reference/gsctl/#configuration)
+
 ```yaml
 jobs:
   run_kat_tests:
@@ -168,7 +191,8 @@ jobs:
       - run: chmod +x /tmp/kube-app-testing.sh
       - run: curl -Lo /tmp/kubectl https://storage.googleapis.com/kubernetes-release/release/v1.18.0/bin/linux/amd64/kubectl
       - run: chmod +x /tmp/kubectl
-      - run: PATH="/tmp:$PATH" kube-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name ci-<insert-app-name-here> -a ${GS_API_KEY} -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE} --giantswarm-api-url ${GS_API_URL}
+      - run: curl -L https://github.com/giantswarm/gsctl/releases/download/0.24.3/gsctl-0.24.3-linux-amd64.tar.gz | tar -zx --strip-components=1 --directory=/tmp gsctl-0.24.3-linux-amd64/gsctl
+      - run: PATH="/tmp:$PATH" kube-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name ci-<insert-app-name-here> -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE}
       - store_test_results:
           path: test-results
       - store_artifacts:
