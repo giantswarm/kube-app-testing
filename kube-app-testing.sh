@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.5.2
+KAT_VERSION=0.6.0
 
 # config
 CONFIG_DIR=/tmp/kat_test
@@ -28,7 +28,6 @@ PYTHON_TESTS_DIR="test/kat"
 
 # gs cluster config
 DEFAULT_PROVIDER="aws"
-DEFAULT_GS_API_URL="https://api.g8s.gaia.eu-central-1.aws.gigantic.io"
 DEFAULT_REGION="eu-central-1"
 DEFAULT_AVAILABILITY_ZONE="eu-central-1a"
 DEFAULT_SCALING_MIN=1
@@ -442,16 +441,11 @@ update_aws_sec_group () {
   fi
 }
 
-gsctl_with_options () {
-  gsctl --endpoint="${GS_API_URL}" --auth-token="${GSAPI_AUTH_TOKEN}" "$@"
-}
-
-
 create_gs_cluster () {
   info "Creating new tenant cluster."
 
   # create a new cluster
-  if ! CLUSTER_DETAILS="$(gsctl_with_options create cluster --output=json --file - <<EOF
+  if ! CLUSTER_DETAILS="$(gsctl create cluster --output=json --file - <<EOF
 api_version: v5
 owner: conformance-testing
 release_version: ${GS_RELEASE}
@@ -486,7 +480,6 @@ EOF
   # write cluster details to file to run a manual cleanup later if required.
   echo "export CLUSTER_ID=${CLUSTER_ID}" > ${ENV_DETAILS_FILE}
   echo "export CLUSTER_TYPE=${CLUSTER_TYPE}" >> ${ENV_DETAILS_FILE}
-  echo "export GS_API_URL=${GS_API_URL}" >> ${ENV_DETAILS_FILE}
   if [ $KEEP_AFTER_TEST ]; then
     echo "export KEEP_AFTER_TEST=${KEEP_AFTER_TEST}" >> ${ENV_DETAILS_FILE}
   fi
@@ -502,7 +495,7 @@ EOF
   # declare a counter
   _counter=0
   info "Writing kubeconfig into ${KUBECONFIG}"
-  until gsctl_with_options create kubeconfig \
+  until gsctl create kubeconfig \
     --cluster="${CLUSTER_ID}" \
     --certificate-organizations=system:masters \
     --force \
@@ -519,6 +512,11 @@ EOF
     info "Waiting for kubeconfig for cluster ${CLUSTER_ID} to be created."
     sleep 30
   done
+
+  if [[ -z ${NO_EXTERNAL_KUBE_API} ]]; then
+    # update Security Group to allow access
+    update_aws_sec_group ${CLUSTER_ID}
+  fi
 
   # wait for the cluster to be ready
   # declare a counter
@@ -551,8 +549,7 @@ EOF
 
 delete_gs_cluster () {
   info "Deleting Giant Swarm tenant cluster ${CLUSTER_ID}"
-  if ! curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/ -X DELETE \
-      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ; then
+  if ! gsctl delete cluster --force "${CLUSTER_ID}" ; then
     err "Cluster deletion failed - please investigate."
     exit 3
   else
@@ -596,13 +593,6 @@ force_cleanup () {
   if [[ $KEEP_AFTER_TEST -eq 1 ]]; then
     warn "--keep-after-test was set, cluster will not be cleaned up even though --force-cleanup was set."
     exit 0
-  fi
-
-  # the GS API token must be provided again - this is because it shouldn't be written
-  # to the filesystem at any point.
-  if [[ -z ${GSAPI_AUTH_TOKEN} ]] && [[ "${CLUSTER_TYPE}" == "giantswarm" ]]; then
-    err "Auth token must be provided to enable GS cluster teardown."
-    exit 3
   fi
 
   # call for cluster deletion using the existing functions.
@@ -916,21 +906,19 @@ print_help () {
   echo "                                  available types: kind, giantswarm"
   echo "  --cluster-name                  name of the cluster."
   echo "  -n, --namespace                 namespace to deploy the tested app to"
-  echo "  -a, --auth-token                auth token for the giantswarm API (only applies to"
-  echo "                                  giantswarm cluster type)"
   echo "  -r, --release-version           giantswarm release to use (only applies to"
   echo "                                  giantswarm cluster type)"
   echo "  --provider                      provider to deploy tenant cluster on"
   echo "                                  available providers: aws (default)"
   echo "  --availability-zone             availability zone to deploy the cluster into, defaults to"
   echo "                                  'eu-central-1a'"
-  echo "  --giantswarm-api-url            URL of the Giantswarm installation API, defaults to Gorilla."
-  echo "                                  e.g. 'https://api.g8s.gorilla.eu-central-1.aws.gigantic.io'"
   echo "  --min-scaling                   minimum number of nodes (applies to GS clusters only)"
   echo "  --max-scaling                   maximum number of nodes (applies to GS clusters only). If the max"
   echo "                                  value is set to _less_ than the min value then the provided max will"
   echo "                                  be ignored and max will be set to the same as min, resulting in a"
   echo "                                  statically-sized nodepool"
+  echo "  --no-external-kube-api          do not make GS clusters kubernetes api available from the internet"
+  echo "                                  (applies to GS clusters only)"
   echo ""
   echo "Requirements: kind, helm, curl, jq, gsctl."
   echo ""
@@ -1005,20 +993,12 @@ parse_args () {
         PROVIDER=$2
         shift 2
         ;;
-      -a|--auth-token)
-        GSAPI_AUTH_TOKEN=$2
-        shift 2
-        ;;
       -r|--release-version)
         GS_RELEASE=$2
         shift 2
         ;;
       --availability-zone)
         AVAILABILITY_ZONE=$2
-        shift 2
-        ;;
-      --giantswarm-api-url)
-        GS_API_URL=$2
         shift 2
         ;;
       --min-scaling)
@@ -1031,6 +1011,10 @@ parse_args () {
         ;;
       --force-cleanup)
         FORCE_CLEANUP=1
+        shift 1
+        ;;
+      --no-external-kube-api)
+        NO_EXTERNAL_KUBE_API=1
         shift 1
         ;;
       *)
@@ -1059,18 +1043,12 @@ parse_args () {
       exit 3
     fi
   elif [[ "$CLUSTER_TYPE" == "giantswarm" ]]; then
-    if [[ -z $GSAPI_AUTH_TOKEN ]]; then
-      err "Auth token for the Giant Swarm API must be provided with the '-a' option."
-      exit 3
-    fi
-
     if [[ -z $GS_RELEASE ]]; then
       err "GS release version must be provided with the '-r' option."
       exit 3
     fi
 
     PROVIDER=${PROVIDER:-$DEFAULT_PROVIDER}
-    GS_API_URL=${GS_API_URL:-$DEFAULT_GS_API_URL}
     AVAILABILITY_ZONE=${AVAILABILITY_ZONE:-$DEFAULT_AVAILABILITY_ZONE}
     SCALING_MIN=${SCALING_MIN:-$DEFAULT_SCALING_MIN}
     SCALING_MAX=${SCALING_MAX:-$DEFAULT_SCALING_MAX}
@@ -1083,7 +1061,7 @@ parse_args () {
     # infer the region from the AZ (trims last character).
     REGION=$(echo ${AVAILABILITY_ZONE} | rev | cut -c 2- | rev)
 
-    info "Testing with release $GS_RELEASE against $GS_API_URL in AZ $AVAILABILITY_ZONE."
+    info "Testing with release $GS_RELEASE in AZ $AVAILABILITY_ZONE."
     info "Cluster will scale between $SCALING_MIN and $SCALING_MAX nodes."
   else
     err "Only clusters of types: [kind, giantswarm] are supported now"
