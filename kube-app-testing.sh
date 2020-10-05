@@ -245,13 +245,6 @@ EOF
 }
 
 create_app_catalog_cr () {
-  # if  [[ "${CLUSTER_TYPE}" == "kind" ]]; then
-  #   K8S_BASE_DOMAIN="cluster.local"
-  # elif [[ "${CLUSTER_TYPE}" == "giantswarm" ]]; then
-  #   # Gorilla uses a different base domain
-  #   K8S_BASE_DOMAIN="eu-central-1.local"
-  # fi
-
   kubectl create -f - << EOF
 apiVersion: application.giantswarm.io/v1alpha1
 kind: AppCatalog
