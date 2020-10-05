@@ -509,6 +509,9 @@ EOF
   if [[ -z ${NO_EXTERNAL_KUBE_API} ]]; then
     # update Security Group to allow access
     update_aws_sec_group ${CLUSTER_ID}
+
+    info "Sleeping for 30 seconds to ensure ingress rule has been applied."
+    sleep 30
   fi
 
   # wait for the cluster to be ready
