@@ -1023,7 +1023,7 @@ parse_args () {
   CLUSTER_NAME=${CLUSTER_NAME:-$DEFAULT_CLUSTER_NAME}
   # generate and apply a random suffix to the cluster name to avoid cluster name
   # collisions when spawning a TC.
-  CLUSTER_NAME_SUFFIX=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)
+  CLUSTER_NAME_SUFFIX=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 10 | head -n 1)
   CLUSTER_NAME=${CLUSTER_NAME}-${CLUSTER_NAME_SUFFIX}
 
   CLUSTER_TYPE=${CLUSTER_TYPE:-$DEFAULT_CLUSTER_TYPE}
