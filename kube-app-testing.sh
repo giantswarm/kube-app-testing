@@ -16,7 +16,6 @@ CONFIG_DIR=/tmp/kat_test
 TMP_DIR=/tmp/kat
 ENV_DETAILS_FILE=/tmp/env-details
 export KUBECONFIG=${CONFIG_DIR}/kube.config
-export KUBECONFIG_I=${CONFIG_DIR}/kube_internal.config
 DEFAULT_CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
 CHART_DEPLOY_NAMESPACE=default
@@ -360,7 +359,6 @@ create_kind_cluster () {
 
   kind create cluster --name ${CLUSTER_NAME} --config ${KIND_CONFIG_FILE}
   kind get kubeconfig --name ${CLUSTER_NAME} > ${KUBECONFIG}
-  kind get kubeconfig --name ${CLUSTER_NAME} --internal > ${KUBECONFIG_I}
   info "Cluster created, waiting for basic services to come up"
   kubectl -n kube-system rollout status deployment coredns
 
@@ -800,19 +798,13 @@ run_pytest () {
   done
 
   info "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
-  # if the tests are running against a KinD cluster then we want to use the internal
-  # config we generated earlier. if this isn't a KinD cluster then we just skip past
-  # and use the kubeconfig generated for external access
-  if [[ "${CLUSTER_TYPE}" == "kind" ]]; then
-    KUBECONFIG=${KUBECONFIG_I}
-  fi
   pipenv_cmd='PATH=$HOME/.local/bin:$PATH pipenv sync && PATH=$HOME/.local/bin:$PATH pipenv run pytest --log-cli-level info --full-trace --verbosity=8 .'
   KUBECONFIG_STR="$(cat ${KUBECONFIG})"
   docker run -it \
     --network host \
     -v ${TMP_DIR}/.local:/root/.local \
     -v ${TMP_DIR}/.cache:/root/.cache \
-    -v `pwd`:/chart -w /chart \
+    -v $(pwd):/chart -w /chart \
     python:${PYTHON_VERSION_TAG} sh \
     -c "echo \"${KUBECONFIG_STR}\" > /kube.config \
     && pip install pipenv \
@@ -850,9 +842,10 @@ run_tests_for_single_config () {
   chart_name=$1
   config_file=$2
 
+  CHART_VERSION=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
+
   create_cluster ${CLUSTER_TYPE}
   start_tools ${CLUSTER_TYPE}
-  CHART_VERSION=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
   upload_chart ${chart_name} ${CLUSTER_TYPE}
   run_pre_test_hook ${chart_name}
   create_app ${chart_name} $config_file
