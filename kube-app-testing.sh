@@ -37,7 +37,7 @@ ARCHITECT_VERSION_TAG=latest
 APP_OPERATOR_VERSION_TAG=${APP_OPERATOR_VERSION_TAG:-1.0.7}
 CHART_OPERATOR_VERSION_TAG=${CHART_OPERATOR_VERSION_TAG:-0.13.1}
 CHART_MUSEUM_VERSION_TAG=${CHART_MUSEUM_VERSION_TAG:-v0.12.0}
-PYTHON_VERSION_TAG=3.7-alpine
+DEFAULT_PYTHON_VERSION_TAG=3.7-alpine
 CHART_TESTING_VERSION_TAG=v2.4.0
 
 ####################
@@ -805,7 +805,7 @@ run_pytest () {
     -v ${TMP_DIR}/.local:/root/.local \
     -v ${TMP_DIR}/.cache:/root/.cache \
     -v $(pwd):/chart -w /chart \
-    python:${PYTHON_VERSION_TAG} sh \
+    python:${PYTHON_CONTAINER_TAG} sh \
     -c "echo \"${KUBECONFIG_STR}\" > /kube.config \
     && pip install pipenv \
     && cd ${PYTHON_TESTS_DIR} \
@@ -894,6 +894,7 @@ print_help () {
   echo "  -t, --cluster-type              type of cluster to use for testing"
   echo "                                  available types: kind, giantswarm"
   echo "  --cluster-name                  name of the cluster."
+  echo "  --python-container-tag          python container tag to use for running pytest. default is 3.7-alpine"
   echo "  -n, --namespace                 namespace to deploy the tested app to"
   echo "  -r, --release-version           giantswarm release to use (only applies to"
   echo "                                  giantswarm cluster type)"
@@ -982,6 +983,10 @@ parse_args () {
         PROVIDER=$2
         shift 2
         ;;
+      --python-container-tag)
+        PYTHON_CONTAINER_TAG=$2
+        shift 2
+        ;;
       -r|--release-version)
         GS_RELEASE=$2
         shift 2
@@ -1020,6 +1025,8 @@ parse_args () {
   CLUSTER_NAME=${CLUSTER_NAME}-${CLUSTER_NAME_SUFFIX}
 
   CLUSTER_TYPE=${CLUSTER_TYPE:-$DEFAULT_CLUSTER_TYPE}
+
+  PYTHON_CONTAINER_TAG=${PYTHON_CONTAINER_TAG:-$DEFAULT_PYTHON_VERSION_TAG}
 
   # don't parse any other flags as we don't need them for the cleanup stage.
   if [[ ! -z ${FORCE_CLEANUP} ]]; then
