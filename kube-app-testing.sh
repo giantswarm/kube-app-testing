@@ -1092,13 +1092,13 @@ validate_tools () {
     fi
   done
   if [[ "$CLUSTER_TYPE" == "giantswarm" ]]; then
-    which $app 1>/dev/null 2>&1
+    which gsctl 1>/dev/null 2>&1
     exit_code=$?
     if [[ $exit_code -gt 0 ]]; then
       err "'gsctl' binary not found. Please make sure to install it."
       exit 4
     fi
-  done
+  fi
   info "Listing kind version"
   kind version
   info "Listing helm version"
