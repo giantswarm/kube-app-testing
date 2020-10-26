@@ -910,7 +910,7 @@ print_help () {
   echo "  --no-external-kube-api          do not make GS clusters kubernetes api available from the internet"
   echo "                                  (applies to GS clusters only)"
   echo ""
-  echo "Requirements: kind, helm, curl, jq, gsctl."
+  echo "Requirements: kind, helm, curl, jq, (gsctl for -t giantswarm)."
   echo ""
   echo "In the '-c' mode, this script builds and tests a helm chart using a dedicated cluster."
   echo "The only required parameter is [chart name], which needs to be a name of the chart and "
@@ -1083,11 +1083,19 @@ parse_args () {
 validate_tools () {
   info "Checking for necessary tools being installed"
   set +e
-  for app in "kind" "helm" "curl" "jq" "gsctl"; do
+  for app in "kind" "helm" "curl" "jq"; do
     which $app 1>/dev/null 2>&1
     exit_code=$?
     if [[ $exit_code -gt 0 ]]; then
       err "'$app' binary not found. Please make sure to install it."
+      exit 4
+    fi
+  done
+  if [[ "$CLUSTER_TYPE" == "giantswarm" ]]; then
+    which $app 1>/dev/null 2>&1
+    exit_code=$?
+    if [[ $exit_code -gt 0 ]]; then
+      err "'gsctl' binary not found. Please make sure to install it."
       exit 4
     fi
   done
