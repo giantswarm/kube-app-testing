@@ -1098,13 +1098,13 @@ validate_tools () {
       err "'gsctl' binary not found. Please make sure to install it."
       exit 4
     fi
+    info "Listing gsctl version"
+    gsctl --version
   fi
   info "Listing kind version"
   kind version
   info "Listing helm version"
   helm version 2>/dev/null
-  info "Listing gsctl version"
-  gsctl --version
   set -e
 }
 
