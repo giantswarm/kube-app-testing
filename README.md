@@ -162,53 +162,24 @@ python tests, follow this steps:
 
 ## Integration with CircleCI
 
-Integration with CircleCI requires a job definition similar to the one below. Note that the last step in the job
-is important to ensure any dangling resources are removed if a run fails midway through.
+Integration with CircleCI requires a job definition similar to the one below. This requires the usage of the `architect-orb` with at least version 0.16.0.
 
 You'll also have to export your desired `GSCTL_ENDPOINT` and `GSCTL_AUTH_TOKEN` when testing on a `giantswarm` cluster.
 Check out [GSCTL Environment configuration](https://docs.giantswarm.io/reference/gsctl/#configuration)
 
+For a list of parameters the `run-kat-tests` job supports, check out [its definition](https://github.com/giantswarm/architect-orb/blob/master/src/jobs/run-kat-tests.yaml)
+
 ```yaml
-jobs:
-  run_kat_tests:
-    machine:
-      image: ubuntu-1604:201903-01
-    working_directory:
-      ~/giantswarm-todo
-    steps:
-      - restore_cache:
-          key: repo-{{ .Environment.CIRCLE_SHA1 }}-<< pipeline.git.tag >>
-      - run: pyenv versions
-      - run: pyenv global 3.7.0
-      - run: python --version
-      - run: pip install pipenv aws-shell
-      - run: curl -Lo /tmp/kind "https://github.com/kubernetes-sigs/kind/releases/download/v0.7.0/kind-$(uname)-amd64"
-      - run: chmod +x /tmp/kind
-      - run: curl -Lo /tmp/helm.tar.gz https://get.helm.sh/helm-v2.16.5-linux-amd64.tar.gz
-      - run: tar zxf /tmp/helm.tar.gz -C /tmp && mv /tmp/linux-amd64/helm /tmp/helm
-      - run: /tmp/helm init -c
-      - run: curl -Lo /tmp/kube-app-testing.sh -q https://raw.githubusercontent.com/giantswarm/kube-app-testing/master/kube-app-testing.sh
-      - run: chmod +x /tmp/kube-app-testing.sh
-      - run: curl -Lo /tmp/kubectl https://storage.googleapis.com/kubernetes-release/release/v1.18.0/bin/linux/amd64/kubectl
-      - run: chmod +x /tmp/kubectl
-      - run: curl -L https://github.com/giantswarm/gsctl/releases/download/0.24.3/gsctl-0.24.3-linux-amd64.tar.gz | tar -zx --strip-components=1 --directory=/tmp gsctl-0.24.3-linux-amd64/gsctl
-      - run: PATH="/tmp:$PATH" kube-app-testing.sh -c giantswarm-todo-app -t giantswarm --cluster-name ci-<insert-app-name-here> -r ${GS_RELEASE} --availability-zone ${GS_AVAILABILITY_ZONE}
-      - store_test_results:
-          path: test-results
-      - store_artifacts:
-          path: test-results
-      - run:
-          name: Cleanup resources
-          command: PATH="/tmp:$PATH" kube-app-testing.sh -a ${GS_API_KEY} --force-cleanup
-          when: on_fail
+version: 2.1
+orbs:
+  architect: giantswarm/architect@0.16.0
 
 workflows:
-  version: 2
-  build:
+  test-chart-with-kat:
     jobs:
-      - run_kat_tests:
-          requires:
-            - <add any jobs which must run first here>
+      - architect/run-kat-tests:
+          name: "test the chart with kat"
+          chart: "efk-stack-app"
           filters:
             tags:
               only: /^v.*/
