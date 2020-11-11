@@ -30,7 +30,7 @@ docker run --rm -it \
   --mount type=bind,source=$HOME/.config/gsctl,target=/root/.config/gsctl \
   --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock \
   --mount type=bind,source=$PWD,target=$PWD,bind-propagation=rslave \
-  --mount type=bind,source=/home/gerald/code/kube-app-testing/kube-app-testing.sh,target=/usr/local/bin/kube-app-testing.sh,bind-propagation=rslave \
+  --mount type=bind,source=${PWD}/kube-app-testing.sh,target=/usr/local/bin/kube-app-testing.sh,bind-propagation=rslave \
   --workdir $PWD \
   kat bash
 ```
@@ -179,7 +179,7 @@ workflows:
     jobs:
       - architect/run-kat-tests:
           name: "test the chart with kat"
-          chart: "efk-stack-app"
+          chart: "[your-chart-name]"
           filters:
             tags:
               only: /^v.*/
