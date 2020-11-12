@@ -31,6 +31,7 @@ DEFAULT_REGION="eu-central-1"
 DEFAULT_AVAILABILITY_ZONE="eu-central-1a"
 DEFAULT_SCALING_MIN=1
 DEFAULT_SCALING_MAX=2
+DEFAULT_CLUSTER_ORGANIZATION="conformance-testing"
 
 # docker image tags
 ARCHITECT_VERSION_TAG=latest
@@ -438,7 +439,7 @@ create_gs_cluster () {
   # create a new cluster
   if ! CLUSTER_DETAILS="$(gsctl create cluster --output=json --file - <<EOF
 api_version: v5
-owner: conformance-testing
+owner: ${CLUSTER_ORGANIZATION}
 release_version: ${GS_RELEASE}
 name: ${CLUSTER_NAME}
 master_nodes:
@@ -894,6 +895,8 @@ print_help () {
   echo "  -t, --cluster-type              type of cluster to use for testing"
   echo "                                  available types: kind, giantswarm"
   echo "  --cluster-name                  name of the cluster."
+  echo "  --cluster-organization          name of the organization to create the cluster in. (only applies to"
+  echo "                                  giantswarm cluster type)"
   echo "  --python-container-tag          python container tag to use for running pytest. default is 3.7-alpine"
   echo "  -n, --namespace                 namespace to deploy the tested app to"
   echo "  -r, --release-version           giantswarm release to use (only applies to"
@@ -979,6 +982,10 @@ parse_args () {
         CLUSTER_NAME=$2
         shift 2
         ;;
+      --cluster-organization)
+        CLUSTER_ORGANIZATION=$2
+        shift 2
+        ;;
       --provider)
         PROVIDER=$2
         shift 2
@@ -1023,6 +1030,8 @@ parse_args () {
   # collisions when spawning a TC.
   CLUSTER_NAME_SUFFIX=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 10 | head -n 1)
   CLUSTER_NAME=${CLUSTER_NAME}-${CLUSTER_NAME_SUFFIX}
+
+  CLUSTER_ORGANIZATION=${CLUSTER_ORGANIZATION:-$DEFAULT_CLUSTER_ORGANIZATION}
 
   CLUSTER_TYPE=${CLUSTER_TYPE:-$DEFAULT_CLUSTER_TYPE}
 
