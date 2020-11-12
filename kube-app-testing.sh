@@ -464,6 +464,7 @@ nodepools:
 EOF
 )" ; then
     err "Cluster creation failed."
+    err "${CLUSTER_DETAILS}"
     exit 3
   fi
 
