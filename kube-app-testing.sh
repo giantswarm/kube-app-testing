@@ -9,7 +9,7 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.5.2
+KAT_VERSION=0.5.3
 
 # config
 CONFIG_DIR=/tmp/kat_test
@@ -780,7 +780,7 @@ validate_chart () {
   chart_name=$1
 
   if [[ ! -d ${HOME}/.helm ]]; then
-    helm init -c
+    helm init --stable-repo-url=https://charts.helm.sh/stable --client-only
   fi
 
   info "Taking backups of 'Chart.yaml' and 'values.yaml' before 'architect' alters them"
@@ -794,9 +794,9 @@ validate_chart () {
   CT_DOCKER_RUN="docker run -it --rm -v $(pwd):/chart -w /chart quay.io/helmpack/chart-testing:${CHART_TESTING_VERSION_TAG}"
   if [[ -n "${CT_CONFIG_FILE}" ]]
   then
-    $CT_DOCKER_RUN sh -c "helm init -c && ct lint --config $CT_CONFIG_FILE --validate-maintainers=false --charts=\"helm/${chart_name}\""
+    $CT_DOCKER_RUN sh -c "helm init --stable-repo-url=https://charts.helm.sh/stable --client-only && ct lint --config $CT_CONFIG_FILE --validate-maintainers=false --charts=\"helm/${chart_name}\""
   else
-    $CT_DOCKER_RUN sh -c "helm init -c && ct lint --validate-maintainers=false --charts=\"helm/${chart_name}\""
+    $CT_DOCKER_RUN sh -c "helm init --stable-repo-url=https://charts.helm.sh/stable --client-only && ct lint --validate-maintainers=false --charts=\"helm/${chart_name}\""
   fi
 
   if [[ $VALIDATE_ONLY -eq 1 ]]; then
