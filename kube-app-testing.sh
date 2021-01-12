@@ -39,7 +39,7 @@ ARCHITECT_VERSION_TAG=latest
 APP_OPERATOR_VERSION_TAG=${APP_OPERATOR_VERSION_TAG:-1.0.7}
 CHART_OPERATOR_VERSION_TAG=${CHART_OPERATOR_VERSION_TAG:-0.13.1}
 CHART_MUSEUM_VERSION_TAG=${CHART_MUSEUM_VERSION_TAG:-v0.12.0}
-PYTHON_VERSION_TAG=3.7-alpine
+PYTHON_VERSION_TAG=3.8-alpine
 CHART_TESTING_VERSION_TAG=v2.4.0
 
 ####################
@@ -1122,7 +1122,7 @@ parse_args () {
   CLUSTER_NAME=${CLUSTER_NAME:-$DEFAULT_CLUSTER_NAME}
   # generate and apply a random suffix to the cluster name to avoid cluster name
   # collisions when spawning a TC.
-  CLUSTER_NAME_SUFFIX=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)
+  CLUSTER_NAME_SUFFIX=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 10 | head -n 1)
   CLUSTER_NAME=${CLUSTER_NAME}-${CLUSTER_NAME_SUFFIX}
 
   CLUSTER_TYPE=${CLUSTER_TYPE:-$DEFAULT_CLUSTER_TYPE}
