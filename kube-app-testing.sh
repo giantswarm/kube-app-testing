@@ -9,14 +9,13 @@
 # - use external kubeconfig - to run on already existing cluster
 
 # const
-KAT_VERSION=0.5.2
+KAT_VERSION=0.6.0
 
 # config
 CONFIG_DIR=/tmp/kat_test
 TMP_DIR=/tmp/kat
 ENV_DETAILS_FILE=/tmp/env-details
 export KUBECONFIG=${CONFIG_DIR}/kube.config
-export KUBECONFIG_I=${CONFIG_DIR}/kube_internal.config
 DEFAULT_CLUSTER_NAME=kt
 TOOLS_NAMESPACE=giantswarm
 CHART_DEPLOY_NAMESPACE=default
@@ -28,18 +27,18 @@ PYTHON_TESTS_DIR="test/kat"
 
 # gs cluster config
 DEFAULT_PROVIDER="aws"
-DEFAULT_GS_API_URL="https://api.g8s.gorilla.eu-central-1.aws.gigantic.io"
 DEFAULT_REGION="eu-central-1"
 DEFAULT_AVAILABILITY_ZONE="eu-central-1a"
 DEFAULT_SCALING_MIN=1
 DEFAULT_SCALING_MAX=2
+DEFAULT_CLUSTER_ORGANIZATION="conformance-testing"
 
 # docker image tags
 ARCHITECT_VERSION_TAG=latest
 APP_OPERATOR_VERSION_TAG=${APP_OPERATOR_VERSION_TAG:-1.0.7}
 CHART_OPERATOR_VERSION_TAG=${CHART_OPERATOR_VERSION_TAG:-0.13.1}
 CHART_MUSEUM_VERSION_TAG=${CHART_MUSEUM_VERSION_TAG:-v0.12.0}
-PYTHON_VERSION_TAG=3.7-alpine
+DEFAULT_PYTHON_VERSION_TAG=3.7-alpine
 CHART_TESTING_VERSION_TAG=v2.4.0
 
 ####################
@@ -246,13 +245,6 @@ EOF
 }
 
 create_app_catalog_cr () {
-  if  [[ "${CLUSTER_TYPE}" == "kind" ]]; then
-    K8S_BASE_DOMAIN="cluster.local"
-  elif [[ "${CLUSTER_TYPE}" == "giantswarm" ]]; then
-    # Gorilla uses a different base domain
-    K8S_BASE_DOMAIN="eu-central-1.local"
-  fi
-
   kubectl create -f - << EOF
 apiVersion: application.giantswarm.io/v1alpha1
 kind: AppCatalog
@@ -272,7 +264,7 @@ spec:
   description: 'Catalog to hold charts for testing.'
   logoURL: /favicon.ico
   storage:
-    URL: http://chart-museum.${TOOLS_NAMESPACE}.svc.${K8S_BASE_DOMAIN}:8080/charts/
+    URL: http://chart-museum.${TOOLS_NAMESPACE}.svc.cluster.local:8080/charts/
     type: helm
   title: Testing Catalog
 EOF
@@ -368,7 +360,6 @@ create_kind_cluster () {
 
   kind create cluster --name ${CLUSTER_NAME} --config ${KIND_CONFIG_FILE}
   kind get kubeconfig --name ${CLUSTER_NAME} > ${KUBECONFIG}
-  kind get kubeconfig --name ${CLUSTER_NAME} --internal > ${KUBECONFIG_I}
   info "Cluster created, waiting for basic services to come up"
   kubectl -n kube-system rollout status deployment coredns
 
@@ -397,84 +388,6 @@ delete_kind_cluster () {
 
     # exit successfully
     exit 0
-  fi
-}
-
-gen_gs_blob () {
-  # one function to generate different JSON blobs
-
-  # payload for creating a cluster
-  if [[ "$1" == "cluster" ]]; then
-  cat <<EOF
-{
-	"owner": "giantswarm",
-	"release_version": "${GS_RELEASE}",
-	"name": "${CLUSTER_NAME}",
-	"master": {
-		"availability_zone": "${AVAILABILITY_ZONE}"
-	}
-}
-EOF
-  # payload for creating a nodepool
-  elif [[ "$1" == "nodepool" ]]; then
-  cat <<EOF
-{
-  "name": "${CLUSTER_NAME}",
-  "availability_zones": {
-    "number": 1
-  },
-  "scaling": {
-    "min": ${SCALING_MIN},
-    "max": ${SCALING_MAX}
-  }
-}
-EOF
-  # payload for labelling a cluster
-  elif [[ "${1}" == "addlabels" ]]; then
-  cat <<EOF
-{
-  "labels": {
-    "circleci-branch": "${CIRCLE_BRANCH}",
-    "circleci-build-num": "${CIRCLE_BUILD_NUM}",
-    "github-repo": "${CIRCLE_PROJECT_REPONAME}",
-    "github-user": "${CIRCLE_PROJECT_USERNAME}",
-    "owner": "ci"
-  }
-}
-EOF
-  # payload for creating a client key pair
-  elif [[ "$1" == "keypair" ]]; then
-  cat <<EOF
-{
-  "description": "CI-generated key pair",
-  "ttl_hours": 6,
-  "certificate_organizations": "system:masters"
-}
-EOF
-  # template a kubeconfig based on the created key pair.
-  # expects a file path as the second argument
-  elif [[ "$1" == "kubeconfig" ]]; then
-  cat > $2 << EOF
-apiVersion: v1
-clusters:
-- cluster:
-    certificate-authority-data: "${CA_CERT}"
-    server: "${TC_API_URI}"
-  name: giantswarm-${CLUSTER_ID}
-contexts:
-- context:
-    cluster: giantswarm-${CLUSTER_ID}
-    user: giantswarm-${CLUSTER_ID}-user
-  name: giantswarm-${CLUSTER_ID}
-current-context: giantswarm-${CLUSTER_ID}
-kind: Config
-preferences: {}
-users:
-- name: giantswarm-${CLUSTER_ID}-user
-  user:
-    client-certificate-data: "${CLIENT_CERT}"
-    client-key-data: "${CLIENT_KEY}"
-EOF
   fi
 }
 
@@ -520,58 +433,91 @@ update_aws_sec_group () {
   fi
 }
 
-
 create_gs_cluster () {
   info "Creating new tenant cluster."
 
   # create a new cluster
-  if ! CLUSTER_DETAILS=$(curl ${GS_API_URL}/v5/clusters/ -X POST \
-      -H "Content-Type: application/json" \
-      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-      -d "$(gen_gs_blob cluster)") ; then
+  if ! CLUSTER_DETAILS="$(gsctl create cluster --output=json --file - <<EOF
+api_version: v5
+owner: ${CLUSTER_ORGANIZATION}
+release_version: ${GS_RELEASE}
+name: ${CLUSTER_NAME}
+master_nodes:
+  high_availability: false
+labels:
+  circleci-branch: "${CIRCLE_BRANCH:-no}"
+  circleci-build-num: "${CIRCLE_BUILD_NUM:-no}"
+  github-repo: "${CIRCLE_PROJECT_REPONAME:-no}"
+  github-user: "${CIRCLE_PROJECT_USERNAME:-no}"
+  owner: "ci"
+nodepools:
+- availability_zones:
+    zones:
+    - "${AVAILABILITY_ZONE}"
+  scaling:
+    min: ${SCALING_MIN}
+    max: ${SCALING_MAX}
+  node_spec:
+    aws:
+      instance_type: m5.xlarge
+      use_alike_instance_types: true
+EOF
+)" ; then
     err "Cluster creation failed."
+    err "${CLUSTER_DETAILS}"
     exit 3
   fi
 
   CLUSTER_ID=$(jq -r .id <<< "${CLUSTER_DETAILS}")
 
-  # make sure we're not too fast for the API
-  sleep 5
-
   # write cluster details to file to run a manual cleanup later if required.
   echo "export CLUSTER_ID=${CLUSTER_ID}" > ${ENV_DETAILS_FILE}
   echo "export CLUSTER_TYPE=${CLUSTER_TYPE}" >> ${ENV_DETAILS_FILE}
-  echo "export GS_API_URL=${GS_API_URL}" >> ${ENV_DETAILS_FILE}
   if [ $KEEP_AFTER_TEST ]; then
     echo "export KEEP_AFTER_TEST=${KEEP_AFTER_TEST}" >> ${ENV_DETAILS_FILE}
   fi
 
-  info "Creating nodepool for cluster ${CLUSTER_ID}"
-  # create a nodepool
-  curl ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/nodepools/ -X POST \
-    -H "Content-Type: application/json" \
-    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-    -d "$(gen_gs_blob nodepool)"
-
-  if [[ "$?" -gt 0 ]]; then
-    err "Nodepool creation failed."
-    exit 3
+  # align config with kind clusters
+  if [[ ! -d ${CONFIG_DIR} ]]; then
+    mkdir ${CONFIG_DIR}
   fi
 
-  info "Adding labels to cluster ${CLUSTER_ID}"
-  # label the cluster with some useful information. failure to label a cluster
-  # doesn't cause a job failure
-  if ! curl ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/labels/ -X PUT \
-      -H "Content-Type: application/json" \
-      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-      -d "$(gen_gs_blob addlabels)" ; then
-    err "Could not label cluster, however the job will continue."
+  info "Sleeping 10 seconds before create kubeconfig attempt"
+  sleep 10
+
+  # declare a counter
+  _counter=0
+  info "Writing kubeconfig into ${KUBECONFIG}"
+  until gsctl create kubeconfig \
+    --cluster="${CLUSTER_ID}" \
+    --certificate-organizations=system:masters \
+    --force \
+    --self-contained="${KUBECONFIG}"
+  do
+    # exit if the kubeconfig hasn't been created in 30 minutes
+    if [[ "$_counter" -gt 60 ]]; then
+      err "Kubeconfig not created after 30 minutes."
+      exit 3
+    fi
+
+    # increment the counter
+    _counter=$((_counter+1))
+    info "Waiting for kubeconfig for cluster ${CLUSTER_ID} to be created."
+    sleep 30
+  done
+
+  if [[ -z ${NO_EXTERNAL_KUBE_API} ]]; then
+    # update Security Group to allow access
+    update_aws_sec_group ${CLUSTER_ID}
+
+    info "Sleeping for 30 seconds to ensure ingress rule has been applied."
+    sleep 30
   fi
 
   # wait for the cluster to be ready
   # declare a counter
   _counter=0
-  until [ `curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/ | jq .conditions | grep -i "created" | wc -l` -gt 0 ]; do
+  until kubectl get nodes; do
     # exit if the cluster hasn't been created in 30 minutes
     if [[ "$_counter" -gt 60 ]]; then
       err "Cluster not created after 30 minutes."
@@ -584,42 +530,9 @@ create_gs_cluster () {
     sleep 30
   done
 
-  info "Creating key-pair for tenant cluster access."
-  # create a key pair (must be stored directly in a variable)
-  _key_pair=$(curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/key-pairs/ -X POST \
-    -H "Content-Type: application/json" \
-    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
-    -d "$(gen_gs_blob keypair)")
-
-  # check that we actually got a key pair back
-  grep -q "certificate_authority_data" <<< $_key_pair
-  if [[ "$?" -gt 0 ]]; then
-    err "Key pair creation failed."
-    exit 3
-  fi
-
-  # parse required fields from key pair creation response in order to
-  # create a kubeconfig for the tenant cluster
-  TC_API_URI=$(curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/ | jq -r .api_endpoint)
-  CA_CERT=$(echo $_key_pair | jq -r '.certificate_authority_data | @base64')
-  CLIENT_CERT=$(echo $_key_pair | jq -r '.client_certificate_data | @base64')
-  CLIENT_KEY=$(echo $_key_pair | jq -r '.client_key_data | @base64')
-
-  # align config with kind clusters
-  if [[ ! -d ${CONFIG_DIR} ]]; then
-    mkdir ${CONFIG_DIR}
-  fi
-
-  info "Templating kubeconfig out to ${KUBECONFIG}"
-  # create the kubeconfig
-  gen_gs_blob kubeconfig ${KUBECONFIG}
-
-  # update Security Group to allow access
-  update_aws_sec_group ${CLUSTER_ID}
-
-  # make sure the ingress rule has taken effect before we attempt to connect
-  info "Sleeping for 30 seconds to ensure ingress rule has been applied."
+  info "Waiting for cluster nodes of ${CLUSTER_ID} to be ready. (kubectl wait)"
   sleep 30
+  kubectl wait --for=condition=ready --timeout=5m --all node
 
   info "Testing tenant cluster by listing pods in 'kube-system' namespace."
   # test connectivity
@@ -632,8 +545,7 @@ create_gs_cluster () {
 
 delete_gs_cluster () {
   info "Deleting Giant Swarm tenant cluster ${CLUSTER_ID}"
-  if ! curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/ -X DELETE \
-      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ; then
+  if ! gsctl delete cluster --force "${CLUSTER_ID}" ; then
     err "Cluster deletion failed - please investigate."
     exit 3
   else
@@ -677,13 +589,6 @@ force_cleanup () {
   if [[ $KEEP_AFTER_TEST -eq 1 ]]; then
     warn "--keep-after-test was set, cluster will not be cleaned up even though --force-cleanup was set."
     exit 0
-  fi
-
-  # the GS API token must be provided again - this is because it shouldn't be written
-  # to the filesystem at any point.
-  if [[ -z ${GSAPI_AUTH_TOKEN} ]] && [[ "${CLUSTER_TYPE}" == "giantswarm" ]]; then
-    err "Auth token must be provided to enable GS cluster teardown."
-    exit 3
   fi
 
   # call for cluster deletion using the existing functions.
@@ -846,7 +751,7 @@ verify_helm () {
   expected="DEPLOYED"
   while true; do
     set +e
-    status_out=$(helm --tiller-namespace giantswarm status ${chart_name} 2>&1 | head -n 3 | grep "STATUS:")
+    status_out=$(helm --kubeconfig ${KUBECONFIG} --tiller-namespace giantswarm status ${chart_name} 2>&1 | head -n 3 | grep "STATUS:")
     out_code=$?
     set -e
     status=${status_out##* }
@@ -895,20 +800,16 @@ run_pytest () {
   done
 
   info "Starting tests with pipenv+pytest, saving results to \"${test_res_file}\""
-  # if the tests are running against a KinD cluster then we want to use the internal
-  # config we generated earlier. if this isn't a KinD cluster then we just skip past
-  # and use the kubeconfig generated for external access
-  if [[ "${CLUSTER_TYPE}" == "kind" ]]; then
-    KUBECONFIG=${KUBECONFIG_I}
-  fi
   pipenv_cmd='PATH=$HOME/.local/bin:$PATH pipenv sync && PATH=$HOME/.local/bin:$PATH pipenv run pytest --log-cli-level info --full-trace --verbosity=8 .'
-  docker run -it --rm \
+  KUBECONFIG_STR="$(cat ${KUBECONFIG})"
+  docker run -it \
+    --network host \
     -v ${TMP_DIR}/.local:/root/.local \
     -v ${TMP_DIR}/.cache:/root/.cache \
-    -v `pwd`:/chart -w /chart \
-    -v ${KUBECONFIG}:/kube.config:ro \
-    python:${PYTHON_VERSION_TAG} sh \
-    -c "pip install pipenv \
+    -v $(pwd):/chart -w /chart \
+    python:${PYTHON_CONTAINER_TAG} sh \
+    -c "echo \"${KUBECONFIG_STR}\" > /kube.config \
+    && pip install pipenv \
     && cd ${PYTHON_TESTS_DIR} \
     && $pipenv_cmd \
       --cluster-type existing \
@@ -943,9 +844,10 @@ run_tests_for_single_config () {
   chart_name=$1
   config_file=$2
 
+  CHART_VERSION=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
+
   create_cluster ${CLUSTER_TYPE}
   start_tools ${CLUSTER_TYPE}
-  CHART_VERSION=$(docker run -it --rm -v $(pwd):/workdir -w /workdir quay.io/giantswarm/architect:${ARCHITECT_VERSION_TAG} project version | tr -d '\r')
   upload_chart ${chart_name} ${CLUSTER_TYPE}
   run_pre_test_hook ${chart_name}
   create_app ${chart_name} $config_file
@@ -994,24 +896,25 @@ print_help () {
   echo "  -t, --cluster-type              type of cluster to use for testing"
   echo "                                  available types: kind, giantswarm"
   echo "  --cluster-name                  name of the cluster."
-  echo "  -n, --namespace                 namespace to deploy the tested app to"
-  echo "  -a, --auth-token                auth token for the giantswarm API (only applies to"
+  echo "  --cluster-organization          name of the organization to create the cluster in. (only applies to"
   echo "                                  giantswarm cluster type)"
+  echo "  --python-container-tag          python container tag to use for running pytest. default is 3.7-alpine"
+  echo "  -n, --namespace                 namespace to deploy the tested app to"
   echo "  -r, --release-version           giantswarm release to use (only applies to"
   echo "                                  giantswarm cluster type)"
   echo "  --provider                      provider to deploy tenant cluster on"
   echo "                                  available providers: aws (default)"
   echo "  --availability-zone             availability zone to deploy the cluster into, defaults to"
   echo "                                  'eu-central-1a'"
-  echo "  --giantswarm-api-url            URL of the Giantswarm installation API, defaults to Gorilla."
-  echo "                                  e.g. 'https://api.g8s.gorilla.eu-central-1.aws.gigantic.io'"
   echo "  --min-scaling                   minimum number of nodes (applies to GS clusters only)"
   echo "  --max-scaling                   maximum number of nodes (applies to GS clusters only). If the max"
   echo "                                  value is set to _less_ than the min value then the provided max will"
   echo "                                  be ignored and max will be set to the same as min, resulting in a"
   echo "                                  statically-sized nodepool"
+  echo "  --no-external-kube-api          do not make GS clusters kubernetes api available from the internet"
+  echo "                                  (applies to GS clusters only)"
   echo ""
-  echo "Requirements: kind, helm, curl, jq."
+  echo "Requirements: kind, helm, curl, jq, (gsctl for -t giantswarm)."
   echo ""
   echo "In the '-c' mode, this script builds and tests a helm chart using a dedicated cluster."
   echo "The only required parameter is [chart name], which needs to be a name of the chart and "
@@ -1080,12 +983,16 @@ parse_args () {
         CLUSTER_NAME=$2
         shift 2
         ;;
+      --cluster-organization)
+        CLUSTER_ORGANIZATION=$2
+        shift 2
+        ;;
       --provider)
         PROVIDER=$2
         shift 2
         ;;
-      -a|--auth-token)
-        GSAPI_AUTH_TOKEN=$2
+      --python-container-tag)
+        PYTHON_CONTAINER_TAG=$2
         shift 2
         ;;
       -r|--release-version)
@@ -1094,10 +1001,6 @@ parse_args () {
         ;;
       --availability-zone)
         AVAILABILITY_ZONE=$2
-        shift 2
-        ;;
-      --giantswarm-api-url)
-        GS_API_URL=$2
         shift 2
         ;;
       --min-scaling)
@@ -1112,6 +1015,10 @@ parse_args () {
         FORCE_CLEANUP=1
         shift 1
         ;;
+      --no-external-kube-api)
+        NO_EXTERNAL_KUBE_API=1
+        shift 1
+        ;;
       *)
         print_help
         exit 2
@@ -1122,10 +1029,14 @@ parse_args () {
   CLUSTER_NAME=${CLUSTER_NAME:-$DEFAULT_CLUSTER_NAME}
   # generate and apply a random suffix to the cluster name to avoid cluster name
   # collisions when spawning a TC.
-  CLUSTER_NAME_SUFFIX=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)
+  CLUSTER_NAME_SUFFIX=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 10 | head -n 1)
   CLUSTER_NAME=${CLUSTER_NAME}-${CLUSTER_NAME_SUFFIX}
 
+  CLUSTER_ORGANIZATION=${CLUSTER_ORGANIZATION:-$DEFAULT_CLUSTER_ORGANIZATION}
+
   CLUSTER_TYPE=${CLUSTER_TYPE:-$DEFAULT_CLUSTER_TYPE}
+
+  PYTHON_CONTAINER_TAG=${PYTHON_CONTAINER_TAG:-$DEFAULT_PYTHON_VERSION_TAG}
 
   # don't parse any other flags as we don't need them for the cleanup stage.
   if [[ ! -z ${FORCE_CLEANUP} ]]; then
@@ -1138,18 +1049,12 @@ parse_args () {
       exit 3
     fi
   elif [[ "$CLUSTER_TYPE" == "giantswarm" ]]; then
-    if [[ -z $GSAPI_AUTH_TOKEN ]]; then
-      err "Auth token for the Giant Swarm API must be provided with the '-a' option."
-      exit 3
-    fi
-
     if [[ -z $GS_RELEASE ]]; then
       err "GS release version must be provided with the '-r' option."
       exit 3
     fi
 
     PROVIDER=${PROVIDER:-$DEFAULT_PROVIDER}
-    GS_API_URL=${GS_API_URL:-$DEFAULT_GS_API_URL}
     AVAILABILITY_ZONE=${AVAILABILITY_ZONE:-$DEFAULT_AVAILABILITY_ZONE}
     SCALING_MIN=${SCALING_MIN:-$DEFAULT_SCALING_MIN}
     SCALING_MAX=${SCALING_MAX:-$DEFAULT_SCALING_MAX}
@@ -1162,7 +1067,7 @@ parse_args () {
     # infer the region from the AZ (trims last character).
     REGION=$(echo ${AVAILABILITY_ZONE} | rev | cut -c 2- | rev)
 
-    info "Testing with release $GS_RELEASE against $GS_API_URL in AZ $AVAILABILITY_ZONE."
+    info "Testing with release $GS_RELEASE in AZ $AVAILABILITY_ZONE."
     info "Cluster will scale between $SCALING_MIN and $SCALING_MAX nodes."
   else
     err "Only clusters of types: [kind, giantswarm] are supported now"
@@ -1196,6 +1101,16 @@ validate_tools () {
       exit 4
     fi
   done
+  if [[ "$CLUSTER_TYPE" == "giantswarm" ]]; then
+    which gsctl 1>/dev/null 2>&1
+    exit_code=$?
+    if [[ $exit_code -gt 0 ]]; then
+      err "'gsctl' binary not found. Please make sure to install it."
+      exit 4
+    fi
+    info "Listing gsctl version"
+    gsctl --version
+  fi
   info "Listing kind version"
   kind version
   info "Listing helm version"
