@@ -527,7 +527,7 @@ create_gs_cluster () {
   # create a new cluster
   if ! CLUSTER_DETAILS=$(curl ${GS_API_URL}/v5/clusters/ -X POST \
       -H "Content-Type: application/json" \
-      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
+      -H "Authorization: Bearer ${GSAPI_AUTH_TOKEN}" \
       -d "$(gen_gs_blob cluster)") ; then
     err "Cluster creation failed."
     exit 3
@@ -550,7 +550,7 @@ create_gs_cluster () {
   # create a nodepool
   curl ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/nodepools/ -X POST \
     -H "Content-Type: application/json" \
-    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
+    -H "Authorization: Bearer ${GSAPI_AUTH_TOKEN}" \
     -d "$(gen_gs_blob nodepool)"
 
   if [[ "$?" -gt 0 ]]; then
@@ -563,7 +563,7 @@ create_gs_cluster () {
   # doesn't cause a job failure
   if ! curl ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/labels/ -X PUT \
       -H "Content-Type: application/json" \
-      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
+      -H "Authorization: Bearer ${GSAPI_AUTH_TOKEN}" \
       -d "$(gen_gs_blob addlabels)" ; then
     err "Could not label cluster, however the job will continue."
   fi
@@ -571,7 +571,7 @@ create_gs_cluster () {
   # wait for the cluster to be ready
   # declare a counter
   _counter=0
-  until [ `curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/ | jq .conditions | grep -i "created" | wc -l` -gt 0 ]; do
+  until [ `curl -s -H "Authorization: Bearer ${GSAPI_AUTH_TOKEN}" ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/ | jq .conditions | grep -i "created" | wc -l` -gt 0 ]; do
     # exit if the cluster hasn't been created in 30 minutes
     if [[ "$_counter" -gt 60 ]]; then
       err "Cluster not created after 30 minutes."
@@ -588,7 +588,7 @@ create_gs_cluster () {
   # create a key pair (must be stored directly in a variable)
   _key_pair=$(curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/key-pairs/ -X POST \
     -H "Content-Type: application/json" \
-    -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" \
+    -H "Authorization: Bearer ${GSAPI_AUTH_TOKEN}" \
     -d "$(gen_gs_blob keypair)")
 
   # check that we actually got a key pair back
@@ -600,7 +600,7 @@ create_gs_cluster () {
 
   # parse required fields from key pair creation response in order to
   # create a kubeconfig for the tenant cluster
-  TC_API_URI=$(curl -s -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/ | jq -r .api_endpoint)
+  TC_API_URI=$(curl -s -H "Authorization: Bearer ${GSAPI_AUTH_TOKEN}" ${GS_API_URL}/v5/clusters/${CLUSTER_ID}/ | jq -r .api_endpoint)
   CA_CERT=$(echo $_key_pair | jq -r '.certificate_authority_data | @base64')
   CLIENT_CERT=$(echo $_key_pair | jq -r '.client_certificate_data | @base64')
   CLIENT_KEY=$(echo $_key_pair | jq -r '.client_key_data | @base64')
@@ -633,7 +633,7 @@ create_gs_cluster () {
 delete_gs_cluster () {
   info "Deleting Giant Swarm tenant cluster ${CLUSTER_ID}"
   if ! curl ${GS_API_URL}/v4/clusters/${CLUSTER_ID}/ -X DELETE \
-      -H "Authorization: giantswarm ${GSAPI_AUTH_TOKEN}" ; then
+      -H "Authorization: Bearer ${GSAPI_AUTH_TOKEN}" ; then
     err "Cluster deletion failed - please investigate."
     exit 3
   else
